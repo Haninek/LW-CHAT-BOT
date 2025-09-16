@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { pathToFileURL } from 'url';
 
 const db = new Database(process.env.DATABASE_URL || './data/lendwizely.db');
 
@@ -93,7 +94,7 @@ const runMigrations = () => {
 };
 
 // Run if called directly
-if (import.meta.url === new URL(process.argv[1], 'file://').href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   runMigrations();
 }
 
