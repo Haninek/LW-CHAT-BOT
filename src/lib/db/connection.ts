@@ -190,6 +190,34 @@ export class Database {
       CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at);
     `;
 
+    // Background Jobs table
+    const createBackgroundJobsTable = `
+      CREATE TABLE IF NOT EXISTS background_jobs (
+        id TEXT PRIMARY KEY,
+        client_id TEXT NOT NULL,
+        status TEXT DEFAULT 'queued',
+        person_json TEXT NOT NULL,
+        result_json TEXT,
+        error TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
+
+    const createBackgroundJobsIndexes = `
+      CREATE INDEX IF NOT EXISTS idx_background_jobs_client_id ON background_jobs(client_id);
+      CREATE INDEX IF NOT EXISTS idx_background_jobs_status ON background_jobs(status);
+      CREATE INDEX IF NOT EXISTS idx_background_jobs_created_at ON background_jobs(created_at);
+    `;
+
+    const createBackgroundJobsUpdatedAtTrigger = `
+      CREATE TRIGGER IF NOT EXISTS background_jobs_updated_at 
+      AFTER UPDATE ON background_jobs
+      BEGIN
+        UPDATE background_jobs SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+      END
+    `;
+
     // Execute all table creation
     await this.run(createClientsTable);
     await this.run(createClientsIndex);
@@ -201,6 +229,10 @@ export class Database {
 
     await this.run(createEventsTable);
     await this.run(createEventsIndexes);
+
+    await this.run(createBackgroundJobsTable);
+    await this.run(createBackgroundJobsIndexes);
+    await this.run(createBackgroundJobsUpdatedAtTrigger);
 
     console.log('✅ Database tables created/verified');
   }

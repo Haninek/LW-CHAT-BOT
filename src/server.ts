@@ -12,6 +12,7 @@ import healthRoutes from './routes/health';
 import offersRoutes from './routes/offers';
 import smsRoutes from './routes/sms';
 import signRoutes from './routes/sign';
+import backgroundRoutes from './routes/background';
 
 const app = express();
 
@@ -74,6 +75,7 @@ app.use('/api', authenticateApiKey);
 app.use('/api', offersRoutes);
 app.use('/api/sms/cherry', smsRoutes);
 app.use('/api/sign', signRoutes);
+app.use('/api/background', backgroundRoutes);
 
 // Events endpoint (also auth required)
 app.use('/api', signRoutes); // For /api/events
@@ -105,6 +107,7 @@ if (require.main === module) {
       console.log(`🔗 Health check: http://localhost:${port}/healthz`);
       console.log(`💬 SMS webhook: http://localhost:${port}/api/sms/cherry/webhook`);
       console.log(`✍️  Sign webhook: http://localhost:${port}/api/sign/webhook`);
+      console.log(`🔍 Background checks: http://localhost:${port}/api/background/check`);
       console.log(`📋 Events feed: http://localhost:${port}/api/events`);
     });
   }).catch(error => {

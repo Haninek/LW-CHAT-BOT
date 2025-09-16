@@ -203,6 +203,62 @@ curl "http://localhost:8080/api/events?since=2024-01-01T00:00:00Z&limit=50" \
   -H "X-API-Key: your-api-key"
 ```
 
+### Background Checks
+
+```bash
+# Start background check (async)
+curl -X POST http://localhost:8080/api/background/check \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -d '{
+    "client_id": "client_123",
+    "person": {
+      "first": "John",
+      "last": "Doe",
+      "dob": "1990-01-01",
+      "ssn4": "1234",
+      "email": "john.doe@example.com",
+      "phone": "+15551234567",
+      "address": "123 Main St, City, ST 12345"
+    }
+  }'
+
+# Poll job status
+curl http://localhost:8080/api/background/jobs/<job_id> \
+  -H "X-API-Key: your-api-key"
+
+# Get all jobs for a client
+curl http://localhost:8080/api/background/client/<client_id>/jobs \
+  -H "X-API-Key: your-api-key"
+```
+
+**Background Check Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "job_id": "job_123",
+    "status": "completed",
+    "result": {
+      "decision": "OK",
+      "notes": ["No material adverse findings"],
+      "raw": {
+        "records": {
+          "criminal": [],
+          "liens_judgments": [],
+          "OFAC": []
+        },
+        "identity": {
+          "name_match": true,
+          "dob_match": true,
+          "address_match": true
+        }
+      }
+    }
+  }
+}
+```
+
 ## Business Logic
 
 ### Offer Calculation
@@ -248,6 +304,22 @@ SIGN_PROVIDER=dropboxsign
 DROPBOX_SIGN_API_KEY=your-key
 ```
 
+### Background Check Logic
+
+Async processing with deterministic decision logic:
+
+```typescript
+// Decision priority (highest to lowest)
+1. OFAC/Sanctions Hit → "Decline" (immediate)
+2. Criminal Records → "Review" 
+3. Liens/Judgments → "Review"
+4. Identity Mismatch → "Review"
+5. Clean Results → "OK"
+
+// Webhook notification sent to LENDWIZELY_WEBHOOK_URL on completion
+// PII handling: only last 4 SSN digits stored, DOB sanitized in logs
+```
+
 ## Development
 
 ### Scripts
@@ -284,7 +356,8 @@ npm run test:coverage
 Uses SQLite by default with automatic table creation:
 
 - `clients` - SMS consent tracking
-- `agreements` - E-signature status
+- `agreements` - E-signature status  
+- `background_jobs` - Async background check processing
 - `events` - Audit trail for all actions
 
 ## Security Features
@@ -350,19 +423,23 @@ src/
 │   ├── plaid.ts           # Plaid integration
 │   ├── cherry-client.ts   # Cherry SMS integration
 │   ├── signing.ts         # E-signature integration
+│   ├── clear-client.ts    # Background check provider (CLEAR stub)
+│   ├── background-service.ts # Background job processing
 │   └── offers-engine.ts   # Offer calculation logic
 ├── routes/
 │   ├── health.ts          # Health endpoints
 │   ├── bank.ts            # Bank analysis endpoints
 │   ├── offers.ts          # Offer generation endpoints
 │   ├── sms.ts             # SMS endpoints
-│   └── sign.ts            # E-signature endpoints
+│   ├── sign.ts            # E-signature endpoints
+│   └── background.ts      # Background check endpoints
 ├── types/
 │   ├── global.d.ts        # Global type definitions
 │   ├── metrics.ts         # Bank metrics types
 │   ├── offers.ts          # Offer types
 │   ├── sms.ts             # SMS types
-│   └── signing.ts         # E-signature types
+│   ├── signing.ts         # E-signature types
+│   └── background.ts      # Background check types
 └── __tests__/             # Test files
 ```
 
