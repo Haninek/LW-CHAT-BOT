@@ -1,0 +1,590 @@
+openapi: 3.0.3
+info:
+  title: LendWizely AI Bot API
+  description: REST API for SMS outreach, bank parsing, offer generation, background checks, and e-sign
+  version: 1.0.0
+servers:
+  - url: https://api.lendwizely-bot.com
+    description: Production server
+  - url: http://localhost:8080
+    description: Local development server
+
+security:
+  - bearerAuth: []
+
+paths:
+  /healthz:
+    get:
+      summary: Health check
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+
+  /readyz:
+    get:
+      summary: Readiness check
+      security: []
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ready:
+                    type: boolean
+                  services:
+                    type: object
+                    properties:
+                      database:
+                        type: boolean
+                      plaid:
+                        type: boolean
+                      openai:
+                        type: boolean
+
+  /auth/token:
+    post:
+      summary: Exchange API key for JWT
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - api_key
+              properties:
+                api_key:
+                  type: string
+                  description: Partner API key
+      responses:
+        '200':
+          description: JWT token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  expires_at:
+                    type: string
+                    format: date-time
+
+  /clients:
+    post:
+      summary: Create or update client
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClientInput'
+      responses:
+        '201':
+          description: Client created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Client'
+
+  /clients/{client_id}:
+    get:
+      summary: Get client details
+      parameters:
+        - name: client_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Client details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Client'
+
+  /sms/cherry/send:
+    post:
+      summary: Send bulk SMS via Cherry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - group_id
+                - template_id
+                - variables
+              properties:
+                group_id:
+                  type: string
+                template_id:
+                  type: string
+                variables:
+                  type: object
+      responses:
+        '200':
+          description: SMS sent successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id:
+                    type: string
+                  sent_count:
+                    type: integer
+
+  /sms/cherry/webhook:
+    post:
+      summary: Receive Cherry SMS webhooks
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                phone:
+                  type: string
+                message:
+                  type: string
+                type:
+                  type: string
+                  enum: [inbound, status]
+      responses:
+        '200':
+          description: Webhook processed
+
+  /intake:
+    post:
+      summary: Submit client intake form
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntakeForm'
+      responses:
+        '201':
+          description: Intake submitted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  intake_id:
+                    type: string
+                  client_id:
+                    type: string
+
+  /plaid/link:
+    post:
+      summary: Create Plaid Link token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - client_id
+              properties:
+                client_id:
+                  type: string
+                redirect_uri:
+                  type: string
+      responses:
+        '200':
+          description: Link token created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  link_token:
+                    type: string
+                  expiration:
+                    type: string
+                    format: date-time
+
+  /plaid/exchange:
+    post:
+      summary: Exchange Plaid public token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - public_token
+                - client_id
+              properties:
+                public_token:
+                  type: string
+                client_id:
+                  type: string
+      responses:
+        '200':
+          description: Token exchanged
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  item_id:
+                    type: string
+
+  /plaid/transactions:
+    post:
+      summary: Get transactions and compute metrics
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - client_id
+              properties:
+                client_id:
+                  type: string
+                start_date:
+                  type: string
+                  format: date
+                end_date:
+                  type: string
+                  format: date
+      responses:
+        '200':
+          description: Transaction metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Metrics'
+
+  /bank/parse:
+    post:
+      summary: Parse bank statements via OpenAI
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - files
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  minItems: 3
+                  maxItems: 3
+                client_id:
+                  type: string
+      responses:
+        '200':
+          description: Parsed metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Metrics'
+        '422':
+          description: Parsing failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  hints:
+                    type: array
+                    items:
+                      type: string
+
+  /offers:
+    post:
+      summary: Generate offers based on metrics
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Metrics'
+      responses:
+        '200':
+          description: Generated offers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  offers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Offer'
+
+  /background/check:
+    post:
+      summary: Initiate background check
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BackgroundCheckRequest'
+      responses:
+        '202':
+          description: Background check initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  check_id:
+                    type: string
+                  status:
+                    type: string
+                    enum: [pending]
+
+  /sign/send:
+    post:
+      summary: Send document for signature
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - document_base64
+                - client_id
+                - signer_email
+              properties:
+                document_base64:
+                  type: string
+                client_id:
+                  type: string
+                signer_email:
+                  type: string
+                signer_name:
+                  type: string
+      responses:
+        '200':
+          description: Document sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  envelope_id:
+                    type: string
+                  status:
+                    type: string
+
+  /sign/webhook:
+    post:
+      summary: Receive signing webhooks
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Webhook processed
+
+  /events:
+    get:
+      summary: Get events stream
+      parameters:
+        - name: since
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: types
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+      responses:
+        '200':
+          description: Events list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Event'
+                  next_cursor:
+                    type: string
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    ClientInput:
+      type: object
+      required:
+        - phone
+        - first_name
+        - last_name
+      properties:
+        phone:
+          type: string
+          pattern: '^\+1[0-9]{10}$'
+        first_name:
+          type: string
+        last_name:
+          type: string
+        email:
+          type: string
+          format: email
+        business_name:
+          type: string
+
+    Client:
+      allOf:
+        - $ref: '#/components/schemas/ClientInput'
+        - type: object
+          properties:
+            id:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+            consent_sms:
+              type: boolean
+            consent_at:
+              type: string
+              format: date-time
+
+    IntakeForm:
+      type: object
+      required:
+        - client_id
+        - business_type
+        - monthly_revenue_estimate
+        - funding_amount_requested
+      properties:
+        client_id:
+          type: string
+        business_type:
+          type: string
+          enum: [llc, corp, sole_prop, partnership]
+        monthly_revenue_estimate:
+          type: number
+          minimum: 0
+        funding_amount_requested:
+          type: number
+          minimum: 1000
+        time_in_business_months:
+          type: integer
+          minimum: 0
+
+    Metrics:
+      type: object
+      required:
+        - avg_monthly_revenue
+        - avg_daily_balance_3m
+        - total_nsf_3m
+        - total_days_negative_3m
+      properties:
+        avg_monthly_revenue:
+          type: number
+          minimum: 0
+        avg_daily_balance_3m:
+          type: number
+        total_nsf_3m:
+          type: integer
+          minimum: 0
+        total_days_negative_3m:
+          type: integer
+          minimum: 0
+
+    Offer:
+      type: object
+      properties:
+        id:
+          type: string
+        advance_amount:
+          type: number
+        factor_rate:
+          type: number
+        payback_amount:
+          type: number
+        estimated_daily_payment:
+          type: number
+        estimated_term_days:
+          type: integer
+        rationale:
+          type: string
+        tier:
+          type: string
+          enum: [prime, standard, subprime]
+
+    BackgroundCheckRequest:
+      type: object
+      required:
+        - client_id
+        - ssn_last4
+        - dob
+      properties:
+        client_id:
+          type: string
+        ssn_last4:
+          type: string
+          pattern: '^[0-9]{4}$'
+        dob:
+          type: string
+          format: date
+        consent_timestamp:
+          type: string
+          format: date-time
+
+    Event:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [background.completed, sign.completed, intake.submitted]
+        timestamp:
+          type: string
+          format: date-time
+        data:
+          type: object
