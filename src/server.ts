@@ -11,6 +11,7 @@ import { database } from './lib/db/connection';
 import healthRoutes from './routes/health';
 import offersRoutes from './routes/offers';
 import smsRoutes from './routes/sms';
+import signRoutes from './routes/sign';
 
 const app = express();
 
@@ -72,6 +73,10 @@ app.use('/', healthRoutes);
 app.use('/api', authenticateApiKey);
 app.use('/api', offersRoutes);
 app.use('/api/sms/cherry', smsRoutes);
+app.use('/api/sign', signRoutes);
+
+// Events endpoint (also auth required)
+app.use('/api', signRoutes); // For /api/events
 
 // 404 handler
 app.use(notFoundHandler);
@@ -99,6 +104,8 @@ if (require.main === module) {
       console.log(`📊 Environment: ${env.NODE_ENV}`);
       console.log(`🔗 Health check: http://localhost:${port}/healthz`);
       console.log(`💬 SMS webhook: http://localhost:${port}/api/sms/cherry/webhook`);
+      console.log(`✍️  Sign webhook: http://localhost:${port}/api/sign/webhook`);
+      console.log(`📋 Events feed: http://localhost:${port}/api/events`);
     });
   }).catch(error => {
     console.error('Failed to start server:', error);

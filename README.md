@@ -1,183 +1,389 @@
-# LendWizely Chat Bot API
+# LendWisely Chat Bot API
 
-A production-ready FastAPI application for LendWizely's chat bot services, providing financial analysis, loan offers, and integration with external services.
+A production-ready Express + TypeScript API for LendWisely's chat bot functionality, including bank statement analysis, offer generation, SMS notifications, and e-signature workflows.
 
 ## Features
 
-- **Bank Statement Analysis**: Upload and analyze bank statements using OpenAI
-- **Loan Offers**: Generate deterministic loan offers based on financial metrics
-- **Plaid Integration**: Connect to bank accounts and retrieve transaction data
-- **Health Checks**: Comprehensive health and readiness endpoints
-- **Type Safety**: Full TypeScript-equivalent type checking with Pydantic v2
-- **Testing**: Comprehensive test suite with pytest
-- **CI/CD**: GitHub Actions workflow for automated testing and linting
+- 🏦 **Bank Statement Analysis** - Upload PDFs, extract financial metrics via OpenAI
+- 💰 **Offer Generation** - Deterministic calculations with AI-powered rationales  
+- 📱 **SMS Integration** - Cherry SMS with TCPA-compliant consent tracking
+- ✍️ **E-Signature** - Switchable DocuSign/Dropbox Sign integration
+- 📊 **Event Tracking** - Comprehensive audit trail and webhook processing
+- 🔐 **Security** - API key auth, rate limiting, input validation
+- 🧪 **Testing** - Comprehensive test suite with mocks
+- 📋 **OpenAPI** - Full API documentation
 
 ## Quick Start
 
 ### Prerequisites
 
-- Python 3.11 or higher
-- pip or uv package manager
+- Node.js 18+
+- npm or yarn
 
 ### Installation
 
-1. Clone the repository:
 ```bash
-git clone <repository-url>
+# Clone and setup
+git clone <your-repo-url>
 cd lw-chat-bot
-```
+npm install
 
-2. Copy environment variables:
-```bash
+# Configure environment
 cp .env.example .env
+# Edit .env with your API keys and configuration
+
+# Run development server
+npm run dev
+
+# Test the API
+curl http://localhost:8080/healthz
 ```
 
-3. Configure your environment variables in `.env`:
+## Environment Configuration
+
+### Required Variables
+
 ```bash
-# Required for OpenAI integration
-OPENAI_API_KEY=your_openai_api_key_here
+# Core Configuration
+PORT=8080
+CORS_ORIGIN=https://app.lendwizely.com
+API_KEY_PARTNER=your-secure-api-key
 
-# Required for Plaid integration
-PLAID_CLIENT_ID=your_plaid_client_id
-PLAID_SECRET=your_plaid_secret
+# OpenAI (required for bank analysis & offer rationales)
+OPENAI_API_KEY=sk-your-openai-key
+OPENAI_MODEL_PARSE=gpt-4o-mini
 
-# Other optional configurations...
+# Plaid (required for bank data integration)
+PLAID_CLIENT_ID=your-plaid-client-id
+PLAID_SECRET=your-plaid-secret
+PLAID_ENV=sandbox
 ```
 
-4. Install dependencies:
+### Optional Integrations
+
 ```bash
-pip install -e ".[dev]"
+# SMS (Cherry)
+CHERRY_API_KEY=your-cherry-api-key
+
+# E-Signature (choose one provider)
+SIGN_PROVIDER=docusign  # or dropboxsign
+
+# DocuSign
+DOCUSIGN_ACCOUNT_ID=your-account-id
+DOCUSIGN_TOKEN=your-integration-key
+
+# Dropbox Sign
+DROPBOX_SIGN_API_KEY=your-api-key
+
+# Database (defaults to SQLite)
+DATABASE_URL=sqlite:///./data.db
 ```
 
-### Running the Application
+## API Endpoints
 
-Start the development server:
+### Health & Status
+
 ```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8080
-```
-
-The API will be available at:
-- API: http://localhost:8080
-- Documentation: http://localhost:8080/docs
-- Alternative docs: http://localhost:8080/redoc
-
-### Health Checks
-
-Test the health endpoints:
-```bash
-# Basic health check
+# Health check
 curl http://localhost:8080/healthz
 
-# Readiness check with dependency validation
+# Readiness check
 curl http://localhost:8080/readyz
+```
+
+### Bank Statement Analysis
+
+```bash
+# Upload 3 PDFs for analysis
+curl -X POST http://localhost:8080/api/bank/parse \
+  -H "X-API-Key: your-api-key" \
+  -F "files=@statement1.pdf" \
+  -F "files=@statement2.pdf" \
+  -F "files=@statement3.pdf"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "months": [
+      {
+        "statement_month": "2024-01",
+        "total_deposits": 85000.00,
+        "avg_daily_balance": 12500.00,
+        "ending_balance": 15000.00,
+        "nsf_count": 0,
+        "days_negative": 0
+      }
+    ],
+    "avg_monthly_revenue": 85000.00,
+    "avg_daily_balance_3m": 12500.00,
+    "total_nsf_3m": 0,
+    "total_days_negative_3m": 0
+  }
+}
+```
+
+### Offer Generation
+
+```bash
+# Generate offers from metrics
+curl -X POST http://localhost:8080/api/offers \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -d '{
+    "avg_monthly_revenue": 80000,
+    "avg_daily_balance_3m": 12000,
+    "total_nsf_3m": 1,
+    "total_days_negative_3m": 2
+  }'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "offers": [
+      {
+        "amount": 57600.00,
+        "fee": 1.25,
+        "term_days": 120,
+        "payback": 72000.00,
+        "est_daily": 600.00,
+        "rationale": "• Competitive 120-day term aligns with cash flow\n• Lower fee rate rewards strong banking history\n• Daily payments spread manageable amounts"
+      }
+    ]
+  }
+}
+```
+
+### SMS Integration
+
+```bash
+# Send SMS blast
+curl -X POST http://localhost:8080/api/sms/cherry/send \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -d '{
+    "numbers": ["+19171234567", "+17325550123"],
+    "message": "Your working capital pre-approval is ready. Review: https://your.link"
+  }'
+
+# SMS webhook (for provider callbacks)
+curl -X POST http://localhost:8080/api/sms/cherry/webhook \
+  -H "Content-Type: application/json" \
+  -d '{"from": "+19171234567", "message": "STOP"}'
+```
+
+### E-Signature
+
+```bash
+# Send agreement for signature
+curl -X POST http://localhost:8080/api/sign/send \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -d '{
+    "client_id": "client_123",
+    "email": "business@example.com",
+    "name": "Business Owner",
+    "pdf_base64": "<base64-encoded-pdf>",
+    "subject": "Working Capital Agreement",
+    "message": "Please review and sign your funding agreement."
+  }'
+
+# Signature webhook (for provider callbacks)
+curl -X POST http://localhost:8080/api/sign/webhook \
+  -H "Content-Type: application/json" \
+  -d '{"envelope_id": "env_12345", "status": "completed", "client_id": "client_123"}'
+
+# Poll events
+curl "http://localhost:8080/api/events?since=2024-01-01T00:00:00Z&limit=50" \
+  -H "X-API-Key: your-api-key"
+```
+
+## Business Logic
+
+### Offer Calculation
+
+Offers use deterministic math with guardrails:
+
+```typescript
+// Base calculation
+base = min(avg_monthly_revenue * 1.2, avg_daily_balance_3m * 20)
+
+// Tiers with factors, fees, and terms
+tiers = [
+  { factor: 0.6, fee: 1.25, term_days: 120 },
+  { factor: 0.8, fee: 1.30, term_days: 140 },
+  { factor: 1.0, fee: 1.35, term_days: 160 }
+]
+
+// Guardrails
+- Reject if total_nsf_3m > 3 OR total_days_negative_3m > 6
+- Cap if (payback / avg_monthly_revenue) > 0.25
+- Round amounts to nearest $100
+```
+
+### SMS Compliance
+
+- Auto-appends "Reply STOP to opt out" to all messages
+- Tracks consent in database with timestamps
+- Handles STOP/HELP keywords automatically
+- TCPA-compliant opt-out processing
+
+### E-Signature Providers
+
+Switchable between DocuSign and Dropbox Sign:
+
+```bash
+# Use DocuSign
+SIGN_PROVIDER=docusign
+DOCUSIGN_ACCOUNT_ID=your-account
+DOCUSIGN_TOKEN=your-token
+
+# Use Dropbox Sign  
+SIGN_PROVIDER=dropboxsign
+DROPBOX_SIGN_API_KEY=your-key
 ```
 
 ## Development
 
-### Code Quality
+### Scripts
 
-Run linting and formatting:
 ```bash
-# Lint with ruff
-ruff check .
-
-# Format with black
-black .
-
-# Type checking with mypy
-mypy .
+npm run dev          # Start development server
+npm run build        # Build for production
+npm run start        # Start production server
+npm run test         # Run tests
+npm run test:watch   # Run tests in watch mode
+npm run test:coverage # Run tests with coverage
+npm run lint         # Lint code
+npm run lint:fix     # Fix linting issues
+npm run format       # Format code with Prettier
 ```
 
 ### Testing
 
-Run the test suite:
+Comprehensive test suite with mocks for external services:
+
 ```bash
 # Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=app --cov-report=html
+npm test
 
 # Run specific test file
-pytest tests/test_health.py -v
+npm test -- --testPathPattern=offers
+
+# Run with coverage
+npm run test:coverage
 ```
 
-### Project Structure
+### Database
 
+Uses SQLite by default with automatic table creation:
+
+- `clients` - SMS consent tracking
+- `agreements` - E-signature status
+- `events` - Audit trail for all actions
+
+## Security Features
+
+- **API Key Authentication** - Required for all API endpoints
+- **Rate Limiting** - 100 requests per 15 minutes per IP
+- **Input Validation** - Zod schemas for all inputs
+- **CORS Protection** - Configurable allowed origins
+- **Error Sanitization** - No sensitive data in error responses
+- **Idempotency Support** - UUID-based request deduplication
+
+## Production Deployment
+
+### Environment Setup
+
+```bash
+# Production environment
+NODE_ENV=production
+PORT=8080
+
+# Use production API endpoints
+PLAID_ENV=production
+DOCUSIGN_BASE=https://www.docusign.net
 ```
-app/
-├── core/           # Core application modules
-│   ├── config.py   # Configuration and settings
-│   ├── errors.py   # Error handling
-│   └── security.py # Authentication and security
-├── routes/         # API route handlers
-│   └── health.py   # Health check endpoints
-├── schemas/        # Pydantic models
-│   ├── metrics.py  # Bank statement metrics
-│   └── offers.py   # Loan offer schemas
-├── services/       # External service clients
-│   ├── openai_client.py  # OpenAI integration
-│   └── plaid_client.py   # Plaid integration
-└── main.py         # FastAPI application factory
-```
 
-## Environment Variables
+### Health Monitoring
 
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `PORT` | Server port | `8080` | No |
-| `DEBUG` | Debug mode | `false` | No |
-| `CORS_ORIGIN` | CORS allowed origin | `https://app.lendwizely.com` | No |
-| `OPENAI_API_KEY` | OpenAI API key | - | Yes* |
-| `OPENAI_MODEL_PARSE` | OpenAI model for parsing | `gpt-4o-mini` | No |
-| `PLAID_CLIENT_ID` | Plaid client ID | - | Yes* |
-| `PLAID_SECRET` | Plaid secret key | - | Yes* |
-| `PLAID_ENV` | Plaid environment | `sandbox` | No |
-| `CHERRY_API_KEY` | Cherry SMS API key | - | No |
-| `DOCUSIGN_TOKEN` | DocuSign API token | - | No |
-| `DROPBOX_SIGN_API_KEY` | Dropbox Sign API key | - | No |
-| `LENDWIZELY_WEBHOOK_URL` | Webhook URL for events | `https://app.lendwizely.com/api/bot-events` | No |
-
-*Required for full functionality
-
-## API Endpoints
-
-### Health Checks
+Monitor these endpoints:
 
 - `GET /healthz` - Basic health check
-- `GET /readyz` - Readiness check with dependency validation
+- `GET /readyz` - Dependency readiness check
 
-### Future Endpoints (Phase 2+)
+### Webhook Security
 
-- `POST /bank/parse` - Upload and analyze bank statements
-- `POST /offers` - Generate loan offers from metrics
-- `POST /sms/cherry/send` - Send SMS messages
-- `POST /sms/cherry/webhook` - Handle SMS webhooks
-- `POST /sign/send` - Send documents for e-signature
-- `POST /sign/webhook` - Handle e-signature webhooks
-- `GET /events` - List recent events
-- `POST /background/check` - Initiate background checks
+In production, implement proper webhook verification:
 
-## Contributing
+- DocuSign: HMAC signature verification with Connect Key
+- Dropbox Sign: HMAC signature verification with API key
+- Cherry SMS: Provider-specific signature verification
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+## Architecture
 
-### Development Guidelines
+```
+src/
+├── lib/
+│   ├── env.ts              # Environment validation
+│   └── db/
+│       └── connection.ts   # Database connection
+├── middleware/
+│   ├── auth.ts            # API key authentication
+│   ├── error.ts           # Error handling
+│   └── idempotency.ts     # Request deduplication
+├── models/
+│   ├── client.ts          # Client data model
+│   ├── agreement.ts       # Agreement data model
+│   └── event.ts           # Event data model
+├── repositories/
+│   ├── client-repository.ts      # Client data access
+│   ├── agreement-repository.ts   # Agreement data access
+│   └── event-repository.ts       # Event data access
+├── services/
+│   ├── openai.ts          # OpenAI integration
+│   ├── plaid.ts           # Plaid integration
+│   ├── cherry-client.ts   # Cherry SMS integration
+│   ├── signing.ts         # E-signature integration
+│   └── offers-engine.ts   # Offer calculation logic
+├── routes/
+│   ├── health.ts          # Health endpoints
+│   ├── bank.ts            # Bank analysis endpoints
+│   ├── offers.ts          # Offer generation endpoints
+│   ├── sms.ts             # SMS endpoints
+│   └── sign.ts            # E-signature endpoints
+├── types/
+│   ├── global.d.ts        # Global type definitions
+│   ├── metrics.ts         # Bank metrics types
+│   ├── offers.ts          # Offer types
+│   ├── sms.ts             # SMS types
+│   └── signing.ts         # E-signature types
+└── __tests__/             # Test files
+```
 
-- Follow PEP 8 style guidelines
-- Add type hints to all functions
-- Write tests for new functionality
-- Update documentation as needed
-- Ensure all tests pass before submitting PR
+## API Documentation
 
-## License
+Full OpenAPI 3.0 specification available at `/openapi.yaml` with:
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+- All endpoint definitions
+- Request/response schemas  
+- Authentication requirements
+- Error response formats
 
 ## Support
 
-For support and questions, please contact the development team or open an issue in the repository.
+For issues or questions:
+
+1. Check the test files for usage examples
+2. Review the OpenAPI specification
+3. Verify environment configuration
+4. Check logs for detailed error information
+
+## License
+
+MIT License - see LICENSE file for details.
