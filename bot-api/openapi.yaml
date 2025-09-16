@@ -1,0 +1,35 @@
+openapi: 3.0.3
+info:
+  title: LendWizely Bot API
+  version: 0.1.0
+servers:
+  - url: http://localhost:8080
+paths:
+  /healthz:
+    get:
+      summary: Liveness probe
+      responses:
+        '200':
+          description: OK
+  /bank/parse:
+    post:
+      summary: Parse 3 bank statements PDFs into Metrics
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  minItems: 3
+                  maxItems: 3
+      responses:
+        '200':
+          description: Metrics parsed
+        '422':
+          description: Validation error
