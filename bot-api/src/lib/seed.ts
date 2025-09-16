@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3';
 import { v4 as uuidv4 } from 'uuid';
+import { pathToFileURL } from 'url';
 
 const db = new Database(process.env.DATABASE_URL || './data/lendwizely.db');
 
@@ -83,8 +84,8 @@ const seedData = () => {
   }
 };
 
-// Run if called directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Ensure the script runs when executed directly (e.g., `node seed.ts`)
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   seedData();
 }
 
