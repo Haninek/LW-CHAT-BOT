@@ -209,4 +209,84 @@ Return the metrics in the exact JSON format specified.`;
   }
 }
 
+  async explainOffers(metrics: object, offers: Array<{ amount: number; fee: number; term_days: number; payback: number; est_daily: number }>): Promise<string[]> {
+    const systemPrompt = `You are a financial advisor explaining merchant cash advance offers. Generate exactly 3 concise bullet points for each offer explaining why it's suitable.
+
+CRITICAL REQUIREMENTS:
+1. Return ONLY valid JSON array of strings
+2. Each string should be 3 bullet points separated by newlines
+3. Use merchant-friendly language
+4. NO promises or guarantees about outcomes
+5. Focus on terms, flexibility, and business alignment
+6. Keep each bullet under 15 words
+
+Format: ["• Point 1\n• Point 2\n• Point 3", "• Point 1\n• Point 2\n• Point 3", ...]`;
+
+    const userPrompt = `Based on these metrics: ${JSON.stringify(metrics)}
+
+Generate rationales for these ${offers.length} offers:
+${offers.map((offer, i) => `Offer ${i + 1}: $${offer.amount.toLocaleString()} advance, ${offer.fee}x fee, ${offer.term_days} days, $${offer.est_daily}/day`).join('\n')}
+
+Return exactly ${offers.length} rationale strings in JSON array format.`;
+
+    const response = await this.makeRequest<OpenAIResponse>('/chat/completions', {
+      model: this.model,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      temperature: 0.3,
+      max_tokens: 1000,
+      response_format: { type: 'json_object' }
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      throw new AppError(
+        'No content received from OpenAI for rationales',
+        422,
+        'OPENAI_NO_RATIONALE_CONTENT'
+      );
+    }
+
+    let parsedContent: unknown;
+    try {
+      parsedContent = JSON.parse(content);
+    } catch (error) {
+      throw new AppError(
+        'Invalid JSON response from OpenAI for rationales',
+        422,
+        'OPENAI_INVALID_RATIONALE_JSON',
+        content
+      );
+    }
+
+    // Extract rationales array from response
+    let rationales: string[];
+    if (Array.isArray(parsedContent)) {
+      rationales = parsedContent as string[];
+    } else if (typeof parsedContent === 'object' && parsedContent !== null && 'rationales' in parsedContent) {
+      rationales = (parsedContent as { rationales: string[] }).rationales;
+    } else {
+      throw new AppError(
+        'OpenAI rationale response is not in expected format',
+        422,
+        'OPENAI_INVALID_RATIONALE_FORMAT',
+        parsedContent
+      );
+    }
+
+    if (!Array.isArray(rationales) || rationales.length !== offers.length) {
+      throw new AppError(
+        `Expected ${offers.length} rationales, got ${rationales?.length || 0}`,
+        422,
+        'OPENAI_RATIONALE_COUNT_MISMATCH',
+        { expected: offers.length, received: rationales?.length || 0, rationales }
+      );
+    }
+
+    return rationales.map(r => String(r).trim());
+  }
+}
+
 export const openaiService = new OpenAIService();
