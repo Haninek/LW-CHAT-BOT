@@ -10,8 +10,11 @@ const router = Router();
 
 router.post('/offers', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    // Validate request body
-    const validationResult = MetricsSchema.safeParse(req.body);
+    // Extract metrics and optional overrides from request
+    const { overrides, ...metricsData } = req.body;
+
+    // Validate metrics data
+    const validationResult = MetricsSchema.safeParse(metricsData);
     if (!validationResult.success) {
       throw new AppError(
         'Invalid metrics data',
@@ -23,15 +26,13 @@ router.post('/offers', async (req: Request, res: Response, next: NextFunction): 
 
     const metrics: Metrics = validationResult.data;
 
-    // Generate deterministic offers
+    // Generate deterministic offers (overrides could be used here in future)
     const baseOffers = proposeOffers(metrics);
     
     if (baseOffers.length === 0) {
-      throw new AppError(
-        'No feasible offers under current guardrails. This may be due to high NSF count (>3) or too many negative balance days (>6).',
-        422,
-        'NO_FEASIBLE_OFFERS'
-      );
+      // Return empty offers array for frontend compatibility
+      res.json({ offers: [] });
+      return;
     }
 
     // Generate AI rationales for each offer
@@ -43,24 +44,8 @@ router.post('/offers', async (req: Request, res: Response, next: NextFunction): 
       rationale: rationales[index] || '• Competitive terms\n• Flexible repayment\n• Quick funding',
     }));
 
-    const response: ApiResponse<{ offers: Offer[] }> = {
-      success: true,
-      data: { offers },
-      timestamp: new Date().toISOString(),
-    };
-
-    // Validate response
-    const responseValidation = OffersResponseSchema.safeParse({ offers });
-    if (!responseValidation.success) {
-      throw new AppError(
-        'Internal error: invalid offers response format',
-        500,
-        'INVALID_OFFERS_RESPONSE',
-        responseValidation.error.errors
-      );
-    }
-
-    res.json(response);
+    // Return in format expected by frontend (direct offers array)
+    res.json({ offers });
   } catch (error) {
     next(error);
   }
