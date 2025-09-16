@@ -7,8 +7,10 @@ import { env } from './lib/env';
 import { errorHandler, notFoundHandler } from './middleware/error';
 import { handleIdempotency } from './middleware/idempotency';
 import { authenticateApiKey } from './middleware/auth';
+import { database } from './lib/db/connection';
 import healthRoutes from './routes/health';
 import offersRoutes from './routes/offers';
+import smsRoutes from './routes/sms';
 
 const app = express();
 
@@ -69,6 +71,7 @@ app.use('/', healthRoutes);
 // API routes (auth required)
 app.use('/api', authenticateApiKey);
 app.use('/api', offersRoutes);
+app.use('/api/sms/cherry', smsRoutes);
 
 // 404 handler
 app.use(notFoundHandler);
@@ -78,11 +81,28 @@ app.use(errorHandler);
 
 const port = env.PORT;
 
+// Initialize database on startup
+async function initializeDatabase(): Promise<void> {
+  try {
+    await database.connect();
+    await database.createTables();
+  } catch (error) {
+    console.error('Failed to initialize database:', error);
+    process.exit(1);
+  }
+}
+
 if (require.main === module) {
-  app.listen(port, () => {
-    console.log(`🚀 Server running on port ${port}`);
-    console.log(`📊 Environment: ${env.NODE_ENV}`);
-    console.log(`🔗 Health check: http://localhost:${port}/healthz`);
+  initializeDatabase().then(() => {
+    app.listen(port, () => {
+      console.log(`🚀 Server running on port ${port}`);
+      console.log(`📊 Environment: ${env.NODE_ENV}`);
+      console.log(`🔗 Health check: http://localhost:${port}/healthz`);
+      console.log(`💬 SMS webhook: http://localhost:${port}/api/sms/cherry/webhook`);
+    });
+  }).catch(error => {
+    console.error('Failed to start server:', error);
+    process.exit(1);
   });
 }
 
