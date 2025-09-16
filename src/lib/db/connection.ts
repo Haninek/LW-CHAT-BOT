@@ -218,6 +218,29 @@ export class Database {
       END
     `;
 
+    // Connectors table
+    const createConnectorsTable = `
+      CREATE TABLE IF NOT EXISTS connectors (
+        id TEXT PRIMARY KEY,
+        name TEXT UNIQUE NOT NULL,
+        encrypted_config TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
+
+    const createConnectorsIndexes = `
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_connectors_name ON connectors(name);
+    `;
+
+    const createConnectorsUpdatedAtTrigger = `
+      CREATE TRIGGER IF NOT EXISTS connectors_updated_at 
+      AFTER UPDATE ON connectors
+      BEGIN
+        UPDATE connectors SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+      END
+    `;
+
     // Execute all table creation
     await this.run(createClientsTable);
     await this.run(createClientsIndex);
@@ -233,6 +256,10 @@ export class Database {
     await this.run(createBackgroundJobsTable);
     await this.run(createBackgroundJobsIndexes);
     await this.run(createBackgroundJobsUpdatedAtTrigger);
+
+    await this.run(createConnectorsTable);
+    await this.run(createConnectorsIndexes);
+    await this.run(createConnectorsUpdatedAtTrigger);
 
     console.log('✅ Database tables created/verified');
   }

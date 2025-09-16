@@ -31,6 +31,9 @@ const envSchema = z.object({
   // Database Configuration
   DATABASE_URL: z.string().default('sqlite:///./data.db'),
   
+  // Encryption Configuration
+  ENCRYPTION_KEY: z.string().min(32, 'ENCRYPTION_KEY must be at least 32 characters'),
+  
   // Cherry SMS Configuration
   CHERRY_BASE_URL: z.string().url().default('https://api.cherrysms.com'),
   CHERRY_API_KEY: z.string().optional(),
@@ -89,6 +92,7 @@ const logEnv = {
   OPENAI_API_KEY: env.OPENAI_API_KEY ? '[SET]' : '[NOT SET]',
   PLAID_SECRET: env.PLAID_SECRET ? '[SET]' : '[NOT SET]',
   DATABASE_URL: env.DATABASE_URL.includes('sqlite') ? '[SQLITE]' : '[OTHER]',
+  ENCRYPTION_KEY: env.ENCRYPTION_KEY ? '[SET]' : '[NOT SET]',
   CHERRY_BASE_URL: env.CHERRY_BASE_URL,
   CHERRY_API_KEY: env.CHERRY_API_KEY ? '[SET]' : '[NOT SET]',
   SIGN_PROVIDER: env.SIGN_PROVIDER,

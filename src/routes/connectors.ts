@@ -1,23 +1,40 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
+import { connectorRepository } from '../repositories/connector-repository';
+import { cryptoService } from '../lib/crypto';
 import { AppError } from '../middleware/error';
 import { ApiResponse } from '../types/global';
 
 const router = Router();
 
-// Connector configuration schema
-const ConnectorConfigSchema = z.object({
-  name: z.enum(['plaid', 'cherry', 'docusign', 'dropboxsign', 'clear']),
-  config: z.record(z.unknown()),
+// Connector configuration schemas
+const ConnectorUpsertRequestSchema = z.object({
+  name: z.string().min(1, 'Connector name is required'),
+  config: z.record(z.unknown()).refine(
+    (config) => Object.keys(config).length > 0,
+    { message: 'Config cannot be empty' }
+  ),
 });
 
-// In-memory storage for demo (use secure secrets manager in production)
-const connectorConfigs = new Map<string, Record<string, unknown>>();
+const ConnectorInfoSchema = z.object({
+  name: z.string(),
+  updated_at: z.string().optional(),
+});
 
-router.post('/', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+const ConnectorRevealResponseSchema = z.object({
+  name: z.string(),
+  config: z.record(z.unknown()),
+  updated_at: z.string().optional(),
+});
+
+type ConnectorUpsertRequest = z.infer<typeof ConnectorUpsertRequestSchema>;
+type ConnectorInfo = z.infer<typeof ConnectorInfoSchema>;
+type ConnectorRevealResponse = z.infer<typeof ConnectorRevealResponseSchema>;
+
+router.post('/connectors', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     // Validate request body
-    const validationResult = ConnectorConfigSchema.safeParse(req.body);
+    const validationResult = ConnectorUpsertRequestSchema.safeParse(req.body);
     if (!validationResult.success) {
       throw new AppError(
         'Invalid connector configuration',
@@ -29,34 +46,18 @@ router.post('/', async (req: Request, res: Response, next: NextFunction): Promis
 
     const { name, config } = validationResult.data;
 
-    // Store configuration (in production, use secure secrets manager)
-    connectorConfigs.set(name, config);
+    // Store encrypted configuration
+    const connector = await connectorRepository.upsertConnector(name, config as Record<string, any>);
 
-    // Log configuration received (without sensitive values)
-    const sanitizedConfig = Object.keys(config).reduce((acc, key) => {
-      const value = config[key];
-      if (typeof value === 'string' && value.length > 0) {
-        // Mask sensitive values
-        if (key.toLowerCase().includes('secret') || 
-            key.toLowerCase().includes('key') || 
-            key.toLowerCase().includes('token')) {
-          acc[key] = '[MASKED]';
-        } else {
-          acc[key] = value;
-        }
-      } else {
-        acc[key] = value;
-      }
-      return acc;
-    }, {} as Record<string, unknown>);
+    // Log configuration received (with masked sensitive values)
+    const maskedConfig = cryptoService.maskConfig(config as Record<string, any>);
+    console.log(`Connector configuration saved for ${name}:`, maskedConfig);
 
-    console.log(`Connector configuration received for ${name}:`, sanitizedConfig);
-
-    const response: ApiResponse<{ name: string; status: string }> = {
+    const response: ApiResponse<ConnectorInfo> = {
       success: true,
       data: {
-        name,
-        status: 'configured',
+        name: connector.name,
+        updated_at: connector.updated_at,
       },
       timestamp: new Date().toISOString(),
     };
@@ -67,51 +68,102 @@ router.post('/', async (req: Request, res: Response, next: NextFunction): Promis
   }
 });
 
-router.get('/:name', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+router.get('/connectors', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const connectors = await connectorRepository.listConnectors();
+
+    const connectorInfos: ConnectorInfo[] = connectors.map(connector => ({
+      name: connector.name,
+      updated_at: connector.updated_at,
+    }));
+
+    const response: ApiResponse<ConnectorInfo[]> = {
+      success: true,
+      data: connectorInfos,
+      timestamp: new Date().toISOString(),
+    };
+
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/connectors/:name', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { name } = req.params;
+    const reveal = req.query.reveal === 'true';
 
-    if (!['plaid', 'cherry', 'docusign', 'dropboxsign', 'clear'].includes(name)) {
+    if (!name) {
       throw new AppError(
-        'Invalid connector name',
+        'Connector name is required',
         400,
-        'INVALID_CONNECTOR_NAME'
+        'CONNECTOR_NAME_REQUIRED'
       );
     }
 
-    const config = connectorConfigs.get(name);
+    const connector = await connectorRepository.getConnector(name);
 
-    if (!config) {
+    if (!connector) {
       throw new AppError(
-        'Connector not configured',
+        'Connector not found',
         404,
         'CONNECTOR_NOT_FOUND'
       );
     }
 
-    // Return sanitized configuration (mask sensitive values)
-    const sanitizedConfig = Object.keys(config).reduce((acc, key) => {
-      const value = config[key];
-      if (typeof value === 'string' && value.length > 0) {
-        if (key.toLowerCase().includes('secret') || 
-            key.toLowerCase().includes('key') || 
-            key.toLowerCase().includes('token')) {
-          acc[key] = '[CONFIGURED]';
-        } else {
-          acc[key] = value;
-        }
-      } else {
-        acc[key] = value;
-      }
-      return acc;
-    }, {} as Record<string, unknown>);
+    let config: Record<string, any>;
 
-    const response: ApiResponse<{ name: string; config: typeof sanitizedConfig }> = {
+    if (reveal) {
+      // DEV ONLY: Reveal actual configuration
+      config = await connectorRepository.getConnectorConfig(name) || {};
+      console.warn(`⚠️  Connector secrets revealed for ${name} (DEV ONLY)`);
+    } else {
+      // Default: Return masked configuration
+      config = await connectorRepository.getMaskedConnectorConfig(name) || {};
+    }
+
+    const response: ApiResponse<ConnectorRevealResponse> = {
       success: true,
       data: {
-        name,
-        config: sanitizedConfig,
+        name: connector.name,
+        config,
+        updated_at: connector.updated_at,
       },
+      timestamp: new Date().toISOString(),
+    };
+
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete('/connectors/:name', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { name } = req.params;
+
+    if (!name) {
+      throw new AppError(
+        'Connector name is required',
+        400,
+        'CONNECTOR_NAME_REQUIRED'
+      );
+    }
+
+    const deleted = await connectorRepository.deleteConnector(name);
+
+    if (!deleted) {
+      throw new AppError(
+        'Connector not found',
+        404,
+        'CONNECTOR_NOT_FOUND'
+      );
+    }
+
+    const response: ApiResponse<{ ok: boolean }> = {
+      success: true,
+      data: { ok: true },
       timestamp: new Date().toISOString(),
     };
 
