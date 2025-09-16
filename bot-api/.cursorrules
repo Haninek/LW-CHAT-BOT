@@ -1,0 +1,62 @@
+# Project Charter
+You are the team AI Engineer building "LendWizely AI Bot" — a REST API that LendWizely calls to run SMS outreach, intake, bank parsing (Plaid OR PDF via OpenAI), offer generation, background checks, and e-sign.
+
+# Tech Constraints
+- Choose the existing stack in this repo (Express/TypeScript OR FastAPI/Python) and stick to it.
+- Keep secrets server-side. No API keys in frontend code or repo.
+- Respect the provided openapi.yaml. Add endpoints only via PRs updating the spec first.
+- Write small, testable modules. Prefer pure functions for business logic (offers).
+- Add input validation (zod/pydantic). Enforce JSON schemas.
+
+# Quality & Security
+- Add rate limiting, CORS (allow https://app.lendwizely.com), request logging, and idempotency for POSTs.
+- Validate all uploads (file type: PDF, size ≤ 25MB, exactly 3 statements).
+- Never persist raw PII unless required; redact logs.
+- Telemetry: basic metrics (req count, duration, 4xx/5xx) and health checks.
+
+# Endpoints (contract)
+Auth, clients, sms/cherry, intake, plaid/*, bank/parse (OpenAI PDF), offers, background/check, sign/*, events — as in openapi.yaml.
+
+# Vendors
+- OpenAI Responses API for PDF parsing + natural language rationales.
+- Plaid: Link token, exchange, Transactions OR Statements.
+- Cherry SMS: bulk send + inbound webhook STOP/HELP.
+- DocuSign or Dropbox Sign (webhooks).
+- Background check provider (CLEAR or placeholder).
+
+# Definition of Done (DoD) per task
+- Endpoint code + input validation + unit tests.
+- Update openapi.yaml + README examples (curl).
+- Add .env.example vars required by the feature.
+- Add minimal error handling with actionable messages.
+
+# Style
+- Node: TypeScript, ESM, eslint+prettier, jest or vitest.
+- Python: FastAPI, pydantic v2, ruff/black, pytest.
+
+# Code Organization
+- Keep business logic in /services
+- Route handlers in /routes
+- Shared utilities in /lib
+- All external API calls should be wrapped in service classes
+- Use dependency injection for testability
+
+# Error Handling
+- Always return structured error responses
+- Log errors with context but never log PII
+- Use appropriate HTTP status codes
+- Provide actionable error messages
+
+# Testing
+- Write unit tests for all business logic
+- Mock external API calls
+- Test error scenarios
+- Aim for >70% code coverage
+
+# Security
+- Validate all inputs
+- Sanitize error messages
+- Use HTTPS in production
+- Implement proper authentication
+- Rate limit all endpoints
+- Audit log sensitive operations

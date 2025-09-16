@@ -1,0 +1,781 @@
+openapi: 3.0.3
+info:
+  title: LendWizely AI Bot API
+  description: REST API for SMS outreach, intake, bank parsing, offer generation, background checks, and e-sign
+  version: 1.0.0
+  contact:
+    name: LendWizely Team
+    email: dev@lendwizely.com
+
+servers:
+  - url: https://api.lendwizely.com
+    description: Production server
+  - url: http://localhost:8080
+    description: Development server
+
+security:
+  - BearerAuth: []
+
+paths:
+  /healthz:
+    get:
+      summary: Health check
+      description: Simple health check endpoint
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+
+  /readyz:
+    get:
+      summary: Readiness check
+      description: Readiness check for Kubernetes
+      security: []
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ready:
+                    type: boolean
+                    example: true
+
+  /auth/token:
+    post:
+      summary: Generate JWT token
+      description: Exchange API key for short-lived JWT token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - api_key
+              properties:
+                api_key:
+                  type: string
+                  description: Partner API key
+      responses:
+        '200':
+          description: Token generated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    description: JWT token
+                  expires_in:
+                    type: integer
+                    description: Token expiration in seconds
+        '401':
+          description: Invalid API key
+
+  /clients:
+    get:
+      summary: List clients
+      description: Get list of clients with pagination
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: List of clients
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  clients:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Client'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+    post:
+      summary: Create client
+      description: Create a new client
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateClientRequest'
+      responses:
+        '201':
+          description: Client created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Client'
+
+  /clients/{client_id}:
+    get:
+      summary: Get client
+      description: Get client by ID
+      parameters:
+        - name: client_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Client details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Client'
+        '404':
+          description: Client not found
+
+  /sms/cherry/send:
+    post:
+      summary: Send SMS via Cherry
+      description: Send templated SMS message to a group
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - group_id
+                - message
+              properties:
+                group_id:
+                  type: string
+                  description: Cherry SMS group ID
+                message:
+                  type: string
+                  description: Message template
+                client_ids:
+                  type: array
+                  items:
+                    type: string
+                  description: Specific client IDs to send to
+      responses:
+        '200':
+          description: SMS sent successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message_id:
+                    type: string
+                  sent_count:
+                    type: integer
+
+  /sms/cherry/webhook:
+    post:
+      summary: Cherry SMS webhook
+      description: Handle inbound SMS responses (STOP/HELP)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                phone:
+                  type: string
+                message:
+                  type: string
+                timestamp:
+                  type: string
+                  format: date-time
+      responses:
+        '200':
+          description: Webhook processed successfully
+
+  /intake:
+    post:
+      summary: Client intake
+      description: Process client intake information
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntakeRequest'
+      responses:
+        '200':
+          description: Intake processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntakeResponse'
+
+  /plaid/link-token:
+    post:
+      summary: Create Plaid link token
+      description: Generate link token for Plaid Link
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - client_id
+              properties:
+                client_id:
+                  type: string
+      responses:
+        '200':
+          description: Link token created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  link_token:
+                    type: string
+                  expiration:
+                    type: string
+                    format: date-time
+
+  /plaid/exchange:
+    post:
+      summary: Exchange public token
+      description: Exchange Plaid public token for access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - public_token
+                - client_id
+              properties:
+                public_token:
+                  type: string
+                client_id:
+                  type: string
+      responses:
+        '200':
+          description: Token exchanged successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  item_id:
+                    type: string
+
+  /plaid/transactions:
+    get:
+      summary: Get transactions
+      description: Retrieve transactions for date range
+      parameters:
+        - name: client_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: start_date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Transactions retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transactions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Transaction'
+
+  /plaid/statements:
+    get:
+      summary: List statements
+      description: Get available bank statements
+      parameters:
+        - name: client_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Statements list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  statements:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Statement'
+
+  /plaid/statements/{statement_id}/download:
+    get:
+      summary: Download statement
+      description: Download statement PDF
+      parameters:
+        - name: statement_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Statement PDF
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+
+  /bank/parse:
+    post:
+      summary: Parse bank statements
+      description: Parse PDF bank statements using OpenAI
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - files
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  minItems: 3
+                  maxItems: 3
+                  description: Exactly 3 PDF bank statements
+      responses:
+        '200':
+          description: Statements parsed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Metrics'
+        '422':
+          description: Invalid file count or format
+
+  /offers:
+    post:
+      summary: Generate offers
+      description: Generate loan offers based on metrics
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - client_id
+                - metrics
+              properties:
+                client_id:
+                  type: string
+                metrics:
+                  $ref: '#/components/schemas/Metrics'
+      responses:
+        '200':
+          description: Offers generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  offers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Offer'
+
+  /background/check:
+    post:
+      summary: Initiate background check
+      description: Start background check process
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BackgroundCheckRequest'
+      responses:
+        '202':
+          description: Background check initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  check_id:
+                    type: string
+                  status:
+                    type: string
+                    enum: [pending]
+
+  /background/check/{check_id}:
+    get:
+      summary: Get background check status
+      description: Check status of background check
+      parameters:
+        - name: check_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Background check status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BackgroundCheckResult'
+
+  /sign/send:
+    post:
+      summary: Send document for signing
+      description: Send document to DocuSign or Dropbox Sign
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignRequest'
+      responses:
+        '200':
+          description: Document sent for signing
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  envelope_id:
+                    type: string
+                  status:
+                    type: string
+                    enum: [sent]
+
+  /sign/webhook:
+    post:
+      summary: Signing webhook
+      description: Handle signing completion webhooks
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                envelope_id:
+                  type: string
+                status:
+                  type: string
+                  enum: [completed, declined]
+                client_id:
+                  type: string
+      responses:
+        '200':
+          description: Webhook processed successfully
+
+  /events:
+    get:
+      summary: Get events
+      description: Get latest events for polling
+      parameters:
+        - name: since
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: Events retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Event'
+
+  /metrics:
+    get:
+      summary: Prometheus metrics
+      description: Prometheus-compatible metrics endpoint
+      security: []
+      responses:
+        '200':
+          description: Metrics in Prometheus format
+          content:
+            text/plain:
+              schema:
+                type: string
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Client:
+      type: object
+      properties:
+        id:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        consent_sms:
+          type: boolean
+        consent_email:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateClientRequest:
+      type: object
+      required:
+        - phone
+        - email
+        - name
+      properties:
+        phone:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        pages:
+          type: integer
+
+    IntakeRequest:
+      type: object
+      required:
+        - client_id
+        - business_name
+        - monthly_revenue
+      properties:
+        client_id:
+          type: string
+        business_name:
+          type: string
+        monthly_revenue:
+          type: number
+        industry:
+          type: string
+        years_in_business:
+          type: integer
+
+    IntakeResponse:
+      type: object
+      properties:
+        intake_id:
+          type: string
+        status:
+          type: string
+          enum: [completed, pending_documents]
+
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: string
+        amount:
+          type: number
+        date:
+          type: string
+          format: date
+        description:
+          type: string
+        account_id:
+          type: string
+
+    Statement:
+      type: object
+      properties:
+        id:
+          type: string
+        account_id:
+          type: string
+        statement_date:
+          type: string
+          format: date
+        file_size:
+          type: integer
+
+    Metrics:
+      type: object
+      required:
+        - avg_monthly_revenue
+        - avg_daily_balance_3m
+        - total_nsf_3m
+        - total_days_negative_3m
+      properties:
+        avg_monthly_revenue:
+          type: number
+          description: Average monthly revenue over 3 months
+        avg_daily_balance_3m:
+          type: number
+          description: Average daily balance over 3 months
+        total_nsf_3m:
+          type: integer
+          description: Total NSF fees in 3 months
+        total_days_negative_3m:
+          type: integer
+          description: Total days with negative balance in 3 months
+
+    Offer:
+      type: object
+      properties:
+        amount:
+          type: number
+        term_days:
+          type: integer
+        factor_rate:
+          type: number
+        payback_amount:
+          type: number
+        rationale:
+          type: string
+          description: AI-generated rationale for the offer
+
+    BackgroundCheckRequest:
+      type: object
+      required:
+        - client_id
+        - first_name
+        - last_name
+        - ssn
+        - date_of_birth
+      properties:
+        client_id:
+          type: string
+        first_name:
+          type: string
+        last_name:
+          type: string
+        ssn:
+          type: string
+        date_of_birth:
+          type: string
+          format: date
+
+    BackgroundCheckResult:
+      type: object
+      properties:
+        check_id:
+          type: string
+        status:
+          type: string
+          enum: [pending, completed, failed]
+        decision:
+          type: string
+          enum: [approved, declined]
+        notes:
+          type: string
+        completed_at:
+          type: string
+          format: date-time
+
+    SignRequest:
+      type: object
+      required:
+        - client_id
+        - document_base64
+        - document_name
+      properties:
+        client_id:
+          type: string
+        document_base64:
+          type: string
+          description: Base64 encoded PDF document
+        document_name:
+          type: string
+        signer_email:
+          type: string
+        signer_name:
+          type: string
+
+    Event:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [background.completed, sign.completed, sign.declined]
+        client_id:
+          type: string
+        data:
+          type: object
+        created_at:
+          type: string
+          format: date-time

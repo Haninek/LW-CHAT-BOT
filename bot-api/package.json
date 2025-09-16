@@ -1,0 +1,88 @@
+{
+  "name": "lendwizely-ai-bot",
+  "version": "1.0.0",
+  "description": "REST API for SMS outreach, intake, bank parsing, offer generation, background checks, and e-sign",
+  "main": "dist/server.js",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "test": "vitest",
+    "test:coverage": "vitest --coverage",
+    "test:watch": "vitest --watch",
+    "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix",
+    "format": "prettier --write src/**/*.ts",
+    "type-check": "tsc --noEmit",
+    "security:scan": "npm audit",
+    "db:migrate": "node dist/lib/migrate.js",
+    "db:seed": "node dist/lib/seed.js"
+  },
+  "keywords": [
+    "api",
+    "lending",
+    "sms",
+    "banking",
+    "ai",
+    "fintech"
+  ],
+  "author": "LendWizely Team",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "express-rate-limit": "^7.1.5",
+    "express-validator": "^7.0.1",
+    "multer": "^1.4.5-lts.1",
+    "jsonwebtoken": "^9.0.2",
+    "bcryptjs": "^2.4.3",
+    "zod": "^3.22.4",
+    "dotenv": "^16.3.1",
+    "winston": "^3.11.0",
+    "uuid": "^9.0.1",
+    "crypto": "^1.0.1",
+    "plaid": "^12.0.0",
+    "openai": "^4.20.1",
+    "axios": "^1.6.2",
+    "bull": "^4.12.2",
+    "ioredis": "^5.3.2",
+    "mysql2": "^3.6.5",
+    "prom-client": "^15.0.0",
+    "express-prometheus-middleware": "^1.2.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/cors": "^2.8.17",
+    "@types/multer": "^1.4.11",
+    "@types/jsonwebtoken": "^9.0.5",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/uuid": "^9.0.7",
+    "@types/node": "^20.10.4",
+    "@typescript-eslint/eslint-plugin": "^6.13.1",
+    "@typescript-eslint/parser": "^6.13.1",
+    "eslint": "^8.54.0",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-prettier": "^5.0.1",
+    "prettier": "^3.1.0",
+    "typescript": "^5.3.2",
+    "tsx": "^4.6.0",
+    "vitest": "^1.0.0",
+    "@vitest/coverage-v8": "^1.0.0",
+    "supertest": "^6.3.3",
+    "@types/supertest": "^2.0.16"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lendwizely/ai-bot-api.git"
+  },
+  "bugs": {
+    "url": "https://github.com/lendwizely/ai-bot-api/issues"
+  },
+  "homepage": "https://github.com/lendwizely/ai-bot-api#readme"
+}
