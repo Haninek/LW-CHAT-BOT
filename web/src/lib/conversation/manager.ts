@@ -1,6 +1,7 @@
-import { Merchant, FieldId } from '../../types'
+import { Merchant, FieldId, MessageTemplate } from '../../types'
 import { fieldRegistry } from '../fieldRegistry'
 import { askOnlyWhatsMissing } from '../coreLogic'
+import { chadPersona, chadTemplates } from '../../data/chad-persona'
 
 export type ConversationState = 
   | 'greeting' 
@@ -30,6 +31,8 @@ export interface BotResponse {
 
 export class ConversationManager {
   private context: ConversationContext
+  private templates: MessageTemplate[]
+  private persona: typeof chadPersona
 
   constructor(initialMerchant?: Merchant) {
     this.context = {
@@ -42,6 +45,8 @@ export class ConversationManager {
       conversationMemory: [],
       isNewMerchant: !initialMerchant
     }
+    this.templates = chadTemplates
+    this.persona = chadPersona
   }
 
   public getContext(): ConversationContext {
@@ -73,8 +78,11 @@ export class ConversationManager {
     if (lowerInput.includes('new') || lowerInput.includes('first time')) {
       this.context.isNewMerchant = true
       this.context.state = 'collecting'
+      this.context.pendingField = 'business.legal_name'
+      
+      const template = this.getTemplate('chat_greeting_potential')
       return {
-        message: "Great! Since you're new, I'll collect some basic info. Let's start with the essentials and keep it quick. What's your business legal name?",
+        message: template,
         state: 'collecting',
         pendingField: 'business.legal_name',
         requiresInput: true
@@ -98,9 +106,9 @@ export class ConversationManager {
       return this.handleIdentification(input)
     }
 
-    // Default response for unclear input
+    // Default response for unclear input - Chad's professional tone
     return {
-      message: "No problem! Are you a new merchant applying for the first time, or are you returning with an existing application?",
+      message: "Hey! I'm Chad. Are you a new merchant applying for the first time, or returning with an existing application?",
       requiresInput: true,
       options: ['New merchant', 'Returning merchant']
     }
@@ -276,8 +284,23 @@ export class ConversationManager {
   }
 
   private getFieldPrompts(fieldId: FieldId): string[] {
-    // Enhanced prompts for different fields
+    // Use Chad's professional templates where available
     const prompts: Partial<Record<FieldId, string[]>> = {
+      'business.ein': [
+        this.getTemplate('chat_ask_ein'),
+        "What's your EIN? (9 digits, optional)",
+        "Do you have your EIN handy?"
+      ],
+      'owner.dob': [
+        this.getTemplate('chat_ask_owner_dob'),
+        "Date of birth? (MM/DD/YYYY)",
+        "I need your date of birth in MM/DD/YYYY format."
+      ],
+      'owner.ssn_last4': [
+        this.getTemplate('chat_ask_owner_ssn4'),
+        "Last 4 digits of your social security number?",
+        "Last 4 of your SSN?"
+      ],
       'business.legal_name': [
         "What's your business legal name?",
         "I need the legal name of your business.",
@@ -303,10 +326,6 @@ export class ConversationManager {
         "What's the ZIP code?",
         "ZIP?"
       ],
-      'business.ein': [
-        "What's your EIN? (9 digits, optional)",
-        "Do you have your EIN handy?"
-      ],
       'owner.first': [
         "What's your first name?",
         "First name?",
@@ -316,16 +335,6 @@ export class ConversationManager {
         "And your last name?",
         "Last name?",
         "Your last name?"
-      ],
-      'owner.dob': [
-        "Date of birth? (MM/DD/YYYY)",
-        "I need your date of birth in MM/DD/YYYY format.",
-        "DOB (MM/DD/YYYY)?"
-      ],
-      'owner.ssn_last4': [
-        "Last 4 digits of your social security number?",
-        "Last 4 of your SSN?",
-        "Social security number (last 4 digits only)?"
       ],
       'contact.phone': [
         "What's the best phone number to reach you?",
@@ -411,9 +420,37 @@ export class ConversationManager {
     }
   }
 
+  // Template and persona helper methods
+  private getTemplate(templateId: string): string {
+    const template = this.templates.find(t => t.id === templateId)
+    return template?.text || `Template ${templateId} not found`
+  }
+
+  private interpolateTemplate(template: string, tokens: Record<string, string> = {}): string {
+    let result = template
+    
+    // Default tokens
+    const defaultTokens = {
+      lenderName: 'UW Wizard',
+      intakeLink: window.location.origin + '/chat',
+      firstName: tokens.firstName || 'there'
+    }
+
+    // Merge provided tokens with defaults
+    const allTokens = { ...defaultTokens, ...tokens }
+    
+    // Replace all {{token}} patterns
+    for (const [key, value] of Object.entries(allTokens)) {
+      const regex = new RegExp(`{{${key}}}`, 'g')
+      result = result.replace(regex, value)
+    }
+
+    return result
+  }
+
   public getGreeting(): BotResponse {
     return {
-      message: "Hi there! I'm Chad S., your LendWisely assistant. I'll help you with your funding application. Are you a new merchant or returning with an existing application?",
+      message: "Hey! I'm Chad. Are you a new merchant applying for the first time, or returning with an existing application?",
       state: 'greeting',
       requiresInput: true,
       options: ['New merchant', 'Returning merchant']

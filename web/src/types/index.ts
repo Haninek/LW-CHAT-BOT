@@ -53,15 +53,20 @@ export type Rule = {
 };
 
 export type Persona = { 
+  id: string;
   style: "friendly"|"professional"|"concise"; 
   reading: "6th"|"8th"|"10th"; 
-  emoji: "low"|"med"|"high" 
+  emoji: "low"|"med"|"high";
+  displayName: string;
+  signature: string;
+  disclaimer?: string;
 };
 
-export type Template = { 
+export type MessageTemplate = { 
   id: string; 
+  channel: "sms" | "chat";
   label: string; 
-  text: string 
+  text: string;
 };  // tokens like {{business.legal_name}} {{owner.first}}
 
 // UI types
