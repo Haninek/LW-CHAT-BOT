@@ -274,26 +274,31 @@ const Chat: React.FC = () => {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-12rem)]">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-[calc(100vh-8rem)]">
       {/* Main Chat Interface */}
-      <div className="lg:col-span-2 bg-white rounded-xl shadow-lg flex flex-col overflow-hidden">
+      <div className="lg:col-span-2 glass-panel flex flex-col overflow-hidden">
         {/* Chat Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
-                <Bot className="w-5 h-5" />
+        <div className="bg-gradient-to-r from-indigo-500 via-purple-600 to-indigo-700 text-white p-8 relative overflow-hidden">
+          {/* Background decoration */}
+          <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/20 to-purple-600/20 backdrop-blur-3xl"></div>
+          <div className="absolute -top-8 -right-8 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
+          <div className="absolute -bottom-8 -left-8 w-24 h-24 bg-white/5 rounded-full blur-xl"></div>
+          
+          <div className="relative z-10 flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <div className="w-14 h-14 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center shadow-xl border border-white/30">
+                <Bot className="w-7 h-7" />
               </div>
               <div>
-                <h2 className="text-xl font-semibold">Chad S.</h2>
-                <p className="text-blue-100 text-sm">Your LendWisely Assistant</p>
+                <h2 className="text-2xl font-bold">Chad</h2>
+                <p className="text-indigo-100 text-sm font-medium">Your AI Funding Representative</p>
               </div>
             </div>
             <div className="text-right">
-              <p className="text-sm text-blue-100">{getStateDisplay()}</p>
-              <div className="w-32 bg-white/20 rounded-full h-2 mt-1">
+              <p className="text-sm text-indigo-100 font-medium mb-2">{getStateDisplay()}</p>
+              <div className="w-36 bg-white/20 rounded-full h-2.5">
                 <div 
-                  className="bg-white h-full rounded-full transition-all duration-500"
+                  className="bg-gradient-to-r from-white to-indigo-200 h-full rounded-full transition-all duration-700 shadow-sm"
                   style={{ width: `${getProgressPercentage()}%` }}
                 />
               </div>
