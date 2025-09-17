@@ -26,7 +26,7 @@ export type FieldStatus = {
 export type Merchant = {
   id: string;
   status: "new" | "existing";
-  fields: Record<FieldId, FieldStatus>;
+  fields: Partial<Record<FieldId, FieldStatus>>;
 };
 
 export type Condition =

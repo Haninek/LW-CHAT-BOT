@@ -1,0 +1,491 @@
+import React, { useMemo, useState } from 'react'
+
+// Simple, dependency-free Tailwind mockup. No external UI libs.
+// Pages: Dashboard, Chat, Merchants, Connectors, Mapping, Triggers, Offers, Background, Sign, Settings
+
+const pages = [
+  'Dashboard','Chat','Merchants','Connectors','Mapping','Triggers','Offers','Background','Sign','Settings'
+]
+
+function Section({title,desc,children}:{title:string,desc?:string,children?:React.ReactNode}){
+  return (
+    <div className="mb-8">
+      <div className="flex items-baseline justify-between mb-3">
+        <h2 className="text-xl font-semibold text-gray-900">{title}</h2>
+        {desc && <p className="text-sm text-gray-500">{desc}</p>}
+      </div>
+      <div className="rounded-2xl border bg-white p-4 shadow-sm">{children}</div>
+    </div>
+  )
+}
+
+function StatCard({label,value,sub}:{label:string,value:string|number,sub?:string}){
+  return (
+    <div className="rounded-2xl border bg-white p-4 shadow-sm">
+      <div className="text-sm text-gray-500">{label}</div>
+      <div className="text-2xl font-semibold">{value}</div>
+      {sub && <div className="text-xs text-gray-500 mt-1">{sub}</div>}
+    </div>
+  )
+}
+
+function Topbar(){
+  return (
+    <div className="sticky top-0 z-10 bg-white/80 backdrop-blur border-b">
+      <div className="mx-auto max-w-6xl px-6 h-14 flex items-center justify-between">
+        <div className="font-semibold">UW Wizard</div>
+        <div className="flex items-center gap-3">
+          <input placeholder="Search…" className="rounded-xl border px-3 py-1.5 text-sm"/>
+          <span className="text-xs text-gray-500">Demo mockup</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Sidebar({active,setActive}:{active:string,setActive:(s:string)=>void}){
+  return (
+    <div className="hidden md:block w-60 shrink-0 border-r bg-white">
+      <div className="p-4 text-sm text-gray-500">Navigation</div>
+      <nav className="px-2 space-y-1">
+        {pages.map(p=> (
+          <button key={p} onClick={()=>setActive(p)}
+            className={`w-full text-left px-3 py-2 rounded-xl text-sm ${active===p? 'bg-gray-900 text-white':'hover:bg-gray-100'}`}>{p}</button>
+        ))}
+      </nav>
+    </div>
+  )
+}
+
+function Pill({children,className}:{children:React.ReactNode,className?:string}){
+  return <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${className||'bg-gray-100 text-gray-700'}`}>{children}</span>
+}
+
+// —— Dashboard ——
+function Dashboard(){
+  return (
+    <div className="mx-auto max-w-6xl px-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <StatCard label="API Health" value="OK" sub="/healthz 200 ms"/>
+        <StatCard label="Merchants" value={182} sub="+6 today"/>
+        <StatCard label="Connectors" value={5} sub="Email, Plaid, DocuSign…"/>
+        <StatCard label="Events (24h)" value={341} sub="9 errors"/>
+      </div>
+
+      <Section title="Quick Actions">
+        <div className="flex flex-wrap gap-2 text-sm">
+          <button className="px-3 py-2 rounded-xl bg-black text-white">Seed demo data</button>
+          <button className="px-3 py-2 rounded-xl border">Open Chat (existing)</button>
+          <button className="px-3 py-2 rounded-xl border">Run Test Offers</button>
+          <button className="px-3 py-2 rounded-xl border">Send Test Email</button>
+        </div>
+      </Section>
+
+      <Section title="Recent Events" desc="Timeline of system actions">
+        <ul className="text-sm space-y-2">
+          <li><Pill className="bg-emerald-100 text-emerald-800">contract.completed</Pill> Ava Rivera’s agreement • 10:42</li>
+          <li><Pill className="bg-blue-100 text-blue-800">offer.accepted</Pill> Bright Auto selected Tier 2 • 09:27</li>
+          <li><Pill className="bg-amber-100 text-amber-800">mapping.published</Pill> Salesforce v3 active • 08:11</li>
+        </ul>
+      </Section>
+    </div>
+  )
+}
+
+// —— Chat ——
+function Chat(){
+  const [messages,setMessages] = useState([
+    {from:'bot',text:'Hey Ava — welcome back! I’ll just confirm a couple details and keep it quick 🙂'},
+    {from:'bot',text:'Still at 24 Oak Ave, Newark NJ 07102?'},
+    {from:'user',text:'Yes, same address.'},
+    {from:'bot',text:'Perfect. What are the last 4 of SSN?'}
+  ])
+  const [input,setInput]=useState('')
+  const send=()=>{if(!input.trim())return; setMessages(m=>[...m,{from:'user',text:input.trim()}]); setInput('')}
+  return (
+    <div className="mx-auto max-w-6xl px-4 grid md:grid-cols-3 gap-6">
+      <div className="md:col-span-2 rounded-2xl border bg-white flex flex-col h-[70vh]">
+        <div className="p-3 border-b text-sm text-gray-600">Chat with Maple Deli LLC</div>
+        <div className="flex-1 overflow-auto p-4 space-y-3">
+          {messages.map((m,i)=> (
+            <div key={i} className={`max-w-[80%] ${m.from==='bot'?'mr-auto':'ml-auto'}`}>
+              <div className={`rounded-2xl px-3 py-2 text-sm shadow-sm ${m.from==='bot'?'bg-gray-100':'bg-gray-900 text-white'}`}>{m.text}</div>
+            </div>
+          ))}
+        </div>
+        <div className="p-3 border-t flex items-center gap-2">
+          <input value={input} onChange={e=>setInput(e.target.value)} placeholder="Type a message…" className="flex-1 rounded-xl border px-3 py-2 text-sm"/>
+          <button onClick={send} className="px-3 py-2 rounded-xl bg-black text-white">Send</button>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <div className="rounded-2xl border bg-white p-4">
+          <div className="text-sm font-medium mb-2">Profile (recognized)</div>
+          <dl className="text-sm grid grid-cols-1 gap-2">
+            <div className="flex items-center justify-between"><dt>Legal Name</dt><dd>Maple Deli LLC</dd></div>
+            <div className="flex items-center justify-between"><dt>Address</dt><dd>24 Oak Ave</dd></div>
+            <div className="flex items-center justify-between"><dt>City/State</dt><dd>Newark, NJ</dd></div>
+            <div className="flex items-center justify-between"><dt>Phone</dt><dd>973•••0188</dd></div>
+            <div className="flex items-center justify-between"><dt>Email</dt><dd>ava@…</dd></div>
+          </dl>
+          <div className="mt-3 text-xs text-gray-500">Asks only missing or expired fields.</div>
+        </div>
+
+        <div className="rounded-2xl border bg-white p-4 space-y-2">
+          <div className="text-sm font-medium">Next Steps</div>
+          <button className="w-full rounded-xl border px-3 py-2 text-sm">Upload 3 Bank Statements</button>
+          <button className="w-full rounded-xl border px-3 py-2 text-sm">Connect with Plaid</button>
+          <button className="w-full rounded-xl bg-black text-white px-3 py-2 text-sm">Generate 3 Offers</button>
+        </div>
+
+        <div className="rounded-2xl border bg-white p-4">
+          <div className="text-sm font-medium mb-2">Offer Preview</div>
+          <div className="text-sm grid gap-2">
+            <div className="rounded-xl border p-2 flex items-center justify-between">
+              <div>
+                <div className="font-medium">$80,000 • fee 1.30 • 140 days</div>
+                <div className="text-xs text-gray-500">Est daily: $743 • Margin shown if buy rate set</div>
+              </div>
+              <button className="rounded-lg bg-black text-white px-3 py-1.5 text-sm">Accept</button>
+            </div>
+            <div className="rounded-xl border p-2 flex items-center justify-between">
+              <div>
+                <div className="font-medium">$60,000 • fee 1.25 • 120 days</div>
+                <div className="text-xs text-gray-500">Est daily: $625</div>
+              </div>
+              <button className="rounded-lg border px-3 py-1.5 text-sm">Compare</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// —— Merchants ——
+function Merchants(){
+  return (
+    <div className="mx-auto max-w-6xl px-4">
+      <Section title="Merchants" desc="Search, import CSV, open chat">
+        <div className="flex items-center justify-between mb-3">
+          <input className="rounded-xl border px-3 py-2 text-sm w-64" placeholder="Search name, phone, email"/>
+          <div className="flex gap-2">
+            <button className="px-3 py-2 rounded-xl border text-sm">Import CSV</button>
+            <button className="px-3 py-2 rounded-xl bg-black text-white text-sm">Add Merchant</button>
+          </div>
+        </div>
+        <table className="w-full text-sm">
+          <thead><tr className="text-left text-gray-500"><th className="py-2">Company</th><th>Contact</th><th>Status</th><th/></tr></thead>
+          <tbody>
+            {[['Maple Deli LLC','ava@mapledeli.com • 973•••0188','existing'],['Bright Auto','luis@brightauto.com • 201•••9922','new']].map((r,i)=> (
+              <tr key={i} className="border-t"><td className="py-2">{r[0]}</td><td>{r[1]}</td><td><Pill>{r[2]}</Pill></td><td className="text-right"><button className="text-sm underline">Open Chat</button></td></tr>
+            ))}
+          </tbody>
+        </table>
+      </Section>
+    </div>
+  )
+}
+
+// —— Connectors ——
+function ConnectorCard({title,children}:{title:string,children?:React.ReactNode}){
+  return (
+    <div className="rounded-2xl border bg-white p-4 shadow-sm">
+      <div className="font-medium mb-2">{title}</div>
+      <div className="grid gap-2 text-sm">{children}</div>
+      <div className="mt-3 flex gap-2">
+        <button className="px-3 py-2 rounded-xl bg-black text-white text-sm">Save</button>
+        <button className="px-3 py-2 rounded-xl border text-sm">Validate</button>
+      </div>
+    </div>
+  )
+}
+function Connectors(){
+  return (
+    <div className="mx-auto max-w-6xl px-4">
+      <div className="grid md:grid-cols-2 gap-4">
+        <ConnectorCard title="Plaid">
+          <input className="rounded-xl border px-3 py-2" placeholder="Client ID"/>
+          <input className="rounded-xl border px-3 py-2" placeholder="Secret"/>
+        </ConnectorCard>
+        <ConnectorCard title="Cherry SMS">
+          <input className="rounded-xl border px-3 py-2" placeholder="API Key"/>
+          <input className="rounded-xl border px-3 py-2" placeholder="Base URL"/>
+        </ConnectorCard>
+        <ConnectorCard title="DocuSign">
+          <input className="rounded-xl border px-3 py-2" placeholder="Token"/>
+          <input className="rounded-xl border px-3 py-2" placeholder="Account ID"/>
+          <input className="rounded-xl border px-3 py-2" placeholder="Base URL"/>
+        </ConnectorCard>
+        <ConnectorCard title="Dropbox Sign">
+          <input className="rounded-xl border px-3 py-2" placeholder="API Key"/>
+        </ConnectorCard>
+        <ConnectorCard title="CLEAR (Background)">
+          <input className="rounded-xl border px-3 py-2" placeholder="Token"/>
+          <input className="rounded-xl border px-3 py-2" placeholder="Base URL"/>
+        </ConnectorCard>
+        <ConnectorCard title="Email (SendGrid/Postmark/SES)">
+          <input className="rounded-xl border px-3 py-2" placeholder="Provider"/>
+          <input className="rounded-xl border px-3 py-2" placeholder="API Key"/>
+          <input className="rounded-xl border px-3 py-2" placeholder="From Address"/>
+        </ConnectorCard>
+        <ConnectorCard title="CRM (Salesforce/HubSpot/Zoho/Pipedrive)">
+          <input className="rounded-xl border px-3 py-2" placeholder="Auth / Base URL"/>
+        </ConnectorCard>
+      </div>
+      <div className="mt-6 text-xs text-gray-500">Secrets are encrypted at rest; reads return masked values.</div>
+    </div>
+  )
+}
+
+// —— Mapping Studio ——
+function Mapping(){
+  const sampleCRM = '{\n  "Account": {"Id": "A-123","Name": "Maple Deli LLC","BillingStreet": "24 Oak Ave","BillingCity": "Newark","BillingState": "NJ","BillingPostalCode": "07102","Tax_ID__c": "12-3456789"},\n  "PrimaryContact": {"FirstName": "Ava","LastName": "Rivera","Phone": "973-555-0188","Email": "ava@mapledeli.com"}\n}'
+  return (
+    <div className="mx-auto max-w-6xl px-4">
+      <Section title="Source" desc="Pick a connector or paste a sample record">
+        <div className="grid md:grid-cols-2 gap-4">
+          <select className="rounded-xl border px-3 py-2 text-sm">
+            <option>Salesforce</option><option>HubSpot</option><option>Zoho</option><option>Pipedrive</option><option>CSV</option>
+          </select>
+          <button className="px-3 py-2 rounded-xl border text-sm">Load from Connector</button>
+          <textarea className="md:col-span-2 rounded-xl border p-3 text-sm h-40" defaultValue={sampleCRM}/>
+        </div>
+      </Section>
+
+      <Section title="Map" desc="Drag fields or choose from dropdowns">
+        <div className="grid md:grid-cols-2 gap-6 text-sm">
+          <div>
+            <div className="font-medium mb-2">CRM Fields</div>
+            <ul className="space-y-1">
+              {['Account.Name','Account.BillingStreet','Account.BillingCity','Account.BillingState','Account.BillingPostalCode','Account.Tax_ID__c','PrimaryContact.FirstName','PrimaryContact.LastName','PrimaryContact.Phone','PrimaryContact.Email'].map(f=> (
+                <li key={f} className="rounded-lg border px-2 py-1">{f}</li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <div className="font-medium mb-2">Canonical Mapping</div>
+            <table className="w-full">
+              <thead className="text-gray-500"><tr><th className="text-left">Canonical</th><th className="text-left">From</th><th>Transform</th></tr></thead>
+              <tbody className="text-sm">
+                {[
+                  ['business.legal_name','Account.Name','trim'],
+                  ['business.address','Account.BillingStreet','trim'],
+                  ['business.city','Account.BillingCity',''],
+                  ['business.state','Account.BillingState','upper'],
+                  ['business.zip','Account.BillingPostalCode','zip5'],
+                  ['business.ein','Account.Tax_ID__c','ein9'],
+                  ['owner.first','PrimaryContact.FirstName','ucfirst'],
+                  ['owner.last','PrimaryContact.LastName','ucfirst'],
+                  ['contact.phone','PrimaryContact.Phone','phone10'],
+                  ['contact.email','PrimaryContact.Email','lower'],
+                ].map((row,i)=> (
+                  <tr key={i} className="border-t">
+                    <td className="py-2">{row[0]}</td>
+                    <td>{row[1]}</td>
+                    <td>
+                      <select className="rounded-lg border px-2 py-1">
+                        <option>{row[2]||'none'}</option>
+                        <option>trim</option><option>lower</option><option>upper</option><option>ucfirst</option><option>zip5</option><option>ein9</option><option>phone10</option><option>email</option>
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </Section>
+
+      <Section title="Test & Publish">
+        <div className="flex flex-wrap gap-2 text-sm mb-3">
+          <button className="px-3 py-2 rounded-xl border">Run Test</button>
+          <button className="px-3 py-2 rounded-xl bg-black text-white">Publish Mapping</button>
+        </div>
+        <div className="rounded-xl border p-3 text-sm bg-gray-50">
+          <div className="font-medium mb-2">Normalized Preview</div>
+          <pre className="overflow-auto text-xs">{
+  "business.legal_name": "Maple Deli LLC",
+  "business.address": "24 Oak Ave",
+  "business.city": "Newark",
+  "business.state": "NJ",
+  "business.zip": "07102",
+  "business.ein": "123456789",
+  "owner.first": "Ava",
+  "owner.last": "Rivera",
+  "contact.phone": "9735550188",
+  "contact.email": "ava@mapledeli.com"
+}</pre>
+        </div>
+      </Section>
+    </div>
+  )
+}
+
+// —— Triggers ——
+function Triggers(){
+  return (
+    <div className="mx-auto max-w-6xl px-4">
+      <Section title="Triggers" desc="Conditions → Actions (email, webhook, notify ops)">
+        <div className="grid md:grid-cols-3 gap-3 text-sm">
+          <select className="rounded-xl border px-3 py-2">
+            <option>event.type == mapping.published</option>
+            <option>event.type == ingest.missing_fields</option>
+            <option>event.type == offers.none</option>
+            <option>event.type == offer.accepted</option>
+          </select>
+          <select className="rounded-xl border px-3 py-2">
+            <option>action: sendEmail</option>
+            <option>action: callWebhook</option>
+            <option>action: notifyOps</option>
+          </select>
+          <input className="rounded-xl border px-3 py-2" placeholder="Template / URL / Channel"/>
+        </div>
+        <div className="mt-3 flex gap-2">
+          <button className="px-3 py-2 rounded-xl bg-black text-white text-sm">Save Trigger</button>
+          <button className="px-3 py-2 rounded-xl border text-sm">Test Trigger</button>
+        </div>
+      </Section>
+
+      <Section title="Active Triggers">
+        <ul className="text-sm space-y-2">
+          <li className="flex items-center justify-between rounded-xl border p-2">
+            <div><Pill className="bg-amber-100 text-amber-800">mapping.published</Pill> → sendEmail: ops@company.com</div>
+            <button className="text-xs underline">Disable</button>
+          </li>
+          <li className="flex items-center justify-between rounded-xl border p-2">
+            <div><Pill className="bg-purple-100 text-purple-800">offer.accepted</Pill> → notifyOps: #funding</div>
+            <button className="text-xs underline">Disable</button>
+          </li>
+        </ul>
+      </Section>
+    </div>
+  )
+}
+
+// —— Offers ——
+function Offers(){
+  return (
+    <div className="mx-auto max-w-6xl px-4">
+      <Section title="Offer Rules" desc="Tiers • Caps • Buy Rates">
+        <div className="grid md:grid-cols-3 gap-3 text-sm">
+          <div className="rounded-xl border p-3">
+            <div className="font-medium mb-2">Tiers</div>
+            <div className="space-y-2">
+              {[
+                {factor:0.6,fee:1.25,term:120,buy:1.18},
+                {factor:0.8,fee:1.30,term:140,buy:1.23},
+                {factor:1.0,fee:1.35,term:160}
+              ].map((t,i)=> (
+                <div key={i} className="grid grid-cols-4 gap-2 items-center">
+                  <input defaultValue={t.factor} className="rounded-lg border px-2 py-1"/>
+                  <input defaultValue={t.fee} className="rounded-lg border px-2 py-1"/>
+                  <input defaultValue={t.term} className="rounded-lg border px-2 py-1"/>
+                  <input defaultValue={t.buy||''} className="rounded-lg border px-2 py-1" placeholder="buy"/>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-xl border p-3">
+            <div className="font-medium mb-2">Caps</div>
+            <div className="text-sm">payback / monthly rev ≤ <input defaultValue={0.25} className="w-20 rounded-lg border px-2 py-1 ml-1"/></div>
+          </div>
+          <div className="rounded-xl border p-3">
+            <div className="font-medium mb-2">Thresholds</div>
+            <div className="text-sm space-y-2">
+              <div>max NSF (3m): <input defaultValue={3} className="w-16 rounded-lg border px-2 py-1 ml-1"/></div>
+              <div>max negative days (3m): <input defaultValue={6} className="w-16 rounded-lg border px-2 py-1 ml-1"/></div>
+            </div>
+          </div>
+        </div>
+        <div className="mt-3 flex gap-2">
+          <button className="px-3 py-2 rounded-xl border text-sm">Local Preview</button>
+          <button className="px-3 py-2 rounded-xl bg-black text-white text-sm">Call /api/offers</button>
+        </div>
+      </Section>
+    </div>
+  )
+}
+
+// —— Background ——
+function Background(){
+  return (
+    <div className="mx-auto max-w-6xl px-4">
+      <Section title="Background Checks" desc="Run and monitor jobs">
+        <div className="grid md:grid-cols-3 gap-3 text-sm">
+          <input className="rounded-xl border px-3 py-2" placeholder="First Name"/>
+          <input className="rounded-xl border px-3 py-2" placeholder="Last Name"/>
+          <input className="rounded-xl border px-3 py-2" placeholder="DOB (YYYY-MM-DD)"/>
+          <input className="rounded-xl border px-3 py-2" placeholder="SSN last-4"/>
+          <button className="px-3 py-2 rounded-xl bg-black text-white text-sm">Start Check</button>
+        </div>
+        <div className="mt-4 rounded-xl border p-3 text-sm">
+          <div className="font-medium mb-1">Recent Jobs</div>
+          <div className="flex items-center justify-between"><span>#BG-1042 • Ava Rivera</span><Pill className="bg-emerald-100 text-emerald-800">OK</Pill></div>
+        </div>
+      </Section>
+    </div>
+  )
+}
+
+// —— Sign ——
+function Sign(){
+  return (
+    <div className="mx-auto max-w-6xl px-4">
+      <Section title="Send Contract" desc="DocuSign / Dropbox Sign">
+        <div className="grid md:grid-cols-3 gap-3 text-sm">
+          <input className="rounded-xl border px-3 py-2" placeholder="Merchant"/>
+          <input className="rounded-xl border px-3 py-2" placeholder="Recipient Email"/>
+          <select className="rounded-xl border px-3 py-2"><option>DocuSign</option><option>Dropbox Sign</option></select>
+          <button className="px-3 py-2 rounded-xl bg-black text-white text-sm">Send</button>
+        </div>
+        <div className="mt-4 rounded-xl border p-3 text-sm">
+          <div className="font-medium mb-1">Recent Envelopes</div>
+          <div className="flex items-center justify-between"><span>EN-8891 • Maple Deli</span><Pill className="bg-blue-100 text-blue-800">sent</Pill></div>
+        </div>
+      </Section>
+    </div>
+  )
+}
+
+// —— Settings ——
+function Settings(){
+  return (
+    <div className="mx-auto max-w-6xl px-4">
+      <Section title="Environment">
+        <div className="grid md:grid-cols-3 gap-3 text-sm">
+          <input className="rounded-xl border px-3 py-2" placeholder="API Base (e.g., http://localhost:8080)"/>
+          <input className="rounded-xl border px-3 py-2" placeholder="API Key (optional)"/>
+          <label className="inline-flex items-center gap-2 text-sm border rounded-xl px-3 py-2"><input type="checkbox"/> Idempotency-Key on POSTs</label>
+          <label className="inline-flex items-center gap-2 text-sm border rounded-xl px-3 py-2"><input type="checkbox"/> Mock Mode</label>
+          <label className="inline-flex items-center gap-2 text-sm border rounded-xl px-3 py-2"><input type="checkbox"/> Dark Mode</label>
+        </div>
+      </Section>
+    </div>
+  )
+}
+
+export default function UWWizardMockup(){
+  const [active,setActive]=useState('Dashboard')
+  return (
+    <div className="min-h-screen bg-gray-50 text-gray-900">
+      <Topbar/>
+      <div className="mx-auto max-w-7xl flex">
+        <Sidebar active={active} setActive={setActive}/>
+        <main className="flex-1 p-4 md:p-8">
+          {active==='Dashboard'&&<Dashboard/>}
+          {active==='Chat'&&<Chat/>}
+          {active==='Merchants'&&<Merchants/>}
+          {active==='Connectors'&&<Connectors/>}
+          {active==='Mapping'&&<Mapping/>}
+          {active==='Triggers'&&<Triggers/>}
+          {active==='Offers'&&<Offers/>}
+          {active==='Background'&&<Background/>}
+          {active==='Sign'&&<Sign/>}
+          {active==='Settings'&&<Settings/>}
+        </main>
+      </div>
+    </div>
+  )
+}

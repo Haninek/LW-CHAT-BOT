@@ -1,126 +1,98 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Send, Bot, User, Check, Clock } from 'lucide-react'
+import { useAppStore } from '../state/useAppStore'
+import { ConversationManager, ConversationState } from '../lib/conversation/manager'
+import { fieldRegistry } from '../lib/fieldRegistry'
+import { FieldId } from '../types'
 
-interface Merchant {
+interface ChatMessage {
   id: string
-  legal_name: string
-  status: string
-  phone?: string
-  email?: string
-}
-
-interface FieldState {
-  field_id: string
-  value: string
-  last_verified_at: string
-  confidence: number
-  source: string
-}
-
-interface Message {
-  id: string
-  type: 'bot' | 'user'
-  text: string
+  type: 'user' | 'bot'
+  content: string
   timestamp: Date
+  options?: string[]
 }
 
 const Chat: React.FC = () => {
-  const [messages, setMessages] = useState<Message[]>([])
+  const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputText, setInputText] = useState('')
-  const [currentMerchant, setCurrentMerchant] = useState<Merchant | null>(null)
-  const [fieldStates, setFieldStates] = useState<FieldState[]>([])
-  const [isNewMerchant, setIsNewMerchant] = useState(true)
+  const [isTyping, setIsTyping] = useState(false)
+  const [conversationManager] = useState(() => new ConversationManager())
+  const [currentState, setCurrentState] = useState<ConversationState>('greeting')
+  const [pendingField, setPendingField] = useState<FieldId | null>(null)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const { updateMerchantField } = useAppStore()
 
   useEffect(() => {
-    // Welcome message
-    addBotMessage("Hi! I'm here to help with your underwriting application. Are you a new merchant or returning?")
+    // Chad S. introduces himself
+    const greeting = conversationManager.getGreeting()
+    addBotMessage(greeting.message, greeting.options)
+    setCurrentState('greeting')
   }, [])
 
-  const addBotMessage = (text: string) => {
-    const message: Message = {
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, isTyping])
+
+  const addBotMessage = (content: string, options?: string[]) => {
+    const message: ChatMessage = {
       id: Date.now().toString(),
       type: 'bot',
-      text,
-      timestamp: new Date()
+      content,
+      timestamp: new Date(),
+      options
     }
     setMessages(prev => [...prev, message])
   }
 
-  const addUserMessage = (text: string) => {
-    const message: Message = {
+  const addUserMessage = (content: string) => {
+    const message: ChatMessage = {
       id: Date.now().toString(),
       type: 'user',
-      text,
+      content,
       timestamp: new Date()
     }
     setMessages(prev => [...prev, message])
   }
 
-  const handleSendMessage = async () => {
-    if (!inputText.trim()) return
+  const handleSendMessage = async (messageText?: string) => {
+    const text = messageText || inputText.trim()
+    if (!text) return
 
-    addUserMessage(inputText)
-    const userInput = inputText.toLowerCase()
+    addUserMessage(text)
     setInputText('')
+    setIsTyping(true)
 
-    // Simple conversation flow for demo
-    if (userInput.includes('new')) {
-      setIsNewMerchant(true)
-      addBotMessage("Great! Since you're a new merchant, I'll need to collect some information. What's your business legal name?")
-    } else if (userInput.includes('existing') || userInput.includes('returning')) {
-      setIsNewMerchant(false)
-      addBotMessage("Welcome back! Can you provide your email or phone number so I can look up your information?")
-    } else if (userInput.includes('@') && !isNewMerchant) {
-      // Try to resolve existing merchant
-      await resolveMerchant(userInput)
-    } else {
-      addBotMessage("I understand. Let me help you with the next step in your application.")
-    }
-  }
+    // Simulate typing delay for more natural feel
+    setTimeout(() => {
+      const response = conversationManager.processUserInput(text)
+      
+      addBotMessage(response.message, response.options)
+      
+      if (response.state) {
+        setCurrentState(response.state)
+      }
+      
+      if (response.pendingField !== undefined) {
+        setPendingField(response.pendingField)
+      }
 
-  const resolveMerchant = async (email: string) => {
-    try {
-      const response = await fetch(`/api/merchants/resolve?email=${encodeURIComponent(email)}`)
-      if (response.ok) {
-        const data = await response.json()
-        if (data.found) {
-          setCurrentMerchant(data.merchant)
-          setFieldStates(Object.entries(data.fields).map(([field_id, field]: [string, any]) => ({
-            field_id,
-            value: field.value,
-            last_verified_at: field.last_verified_at,
-            confidence: field.confidence,
-            source: field.source
-          })))
-          
-          addBotMessage(`Great! I found your business: ${data.merchant.legal_name}. Let me check what information we still need...`)
-          
-          // Ask only what's missing logic
-          setTimeout(() => {
-            const missingFields = []
-            const requiredFields = ['owner.dob', 'owner.ssn_last4']
-            
-            for (const field of requiredFields) {
-              const hasField = Object.keys(data.fields).includes(field)
-              if (!hasField) {
-                missingFields.push(field)
-              }
-            }
-            
-            if (missingFields.length > 0) {
-              if (missingFields.includes('owner.dob')) {
-                addBotMessage("I need to verify the business owner's date of birth. Can you provide that? (MM/DD/YYYY)")
-              }
-            } else {
-              addBotMessage("Perfect! I have all the required information. Would you like to proceed with document upload or Plaid connection?")
-            }
-          }, 1000)
-        } else {
-          addBotMessage("I couldn't find a merchant with that email. Let's start fresh - what's your business legal name?")
+      // Update merchant data if we have a field update
+      const context = conversationManager.getContext()
+      if (context.merchant && pendingField && !response.pendingField) {
+        const fieldValue = context.merchant.fields[pendingField]?.value
+        if (fieldValue) {
+          updateMerchantField(pendingField, fieldValue, 'chat')
         }
       }
-    } catch (error) {
-      addBotMessage("Sorry, I had trouble looking up your information. Let's start with your business legal name.")
-    }
+      
+      setIsTyping(false)
+    }, 800 + Math.random() * 1200) // Random delay for natural feel
+  }
+
+  const handleQuickReply = (option: string) => {
+    handleSendMessage(option)
   }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -130,115 +102,248 @@ const Chat: React.FC = () => {
     }
   }
 
+  const getStateDisplay = () => {
+    const stateLabels: Record<ConversationState, string> = {
+      greeting: 'Welcome',
+      identifying: 'Looking up account',
+      collecting: 'Collecting information',
+      confirming: 'Verifying details',
+      complete: 'Application ready'
+    }
+    return stateLabels[currentState] || 'Chatting'
+  }
+
+  const getProgressPercentage = () => {
+    const progressMap: Record<ConversationState, number> = {
+      greeting: 0,
+      identifying: 20,
+      collecting: 60,
+      confirming: 80,
+      complete: 100
+    }
+    return progressMap[currentState] || 0
+  }
+
+  const getCollectedFields = () => {
+    const context = conversationManager.getContext()
+    if (!context.merchant) return []
+
+    return Object.entries(context.merchant.fields).map(([fieldId, fieldStatus]) => ({
+      fieldId: fieldId as FieldId,
+      label: fieldRegistry[fieldId as FieldId]?.label || fieldId,
+      value: fieldStatus.value,
+      confidence: fieldStatus.confidence
+    }))
+  }
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-12rem)]">
-      {/* Chat Interface */}
-      <div className="lg:col-span-2 bg-white rounded-lg shadow flex flex-col">
-        <div className="p-4 border-b border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-900">Underwriting Chat</h2>
-          <p className="text-sm text-gray-600">Human-friendly automated underwriting assistant</p>
-        </div>
-
-        {/* Messages */}
-        <div className="flex-1 p-4 overflow-y-auto space-y-4">
-          {messages.map((message) => (
-            <div
-              key={message.id}
-              className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              <div
-                className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                  message.type === 'user'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-900'
-                }`}
-              >
-                <p>{message.text}</p>
-                <p className="text-xs mt-1 opacity-70">
-                  {message.timestamp.toLocaleTimeString()}
-                </p>
+      {/* Main Chat Interface */}
+      <div className="lg:col-span-2 bg-white rounded-xl shadow-lg flex flex-col overflow-hidden">
+        {/* Chat Header */}
+        <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
+                <Bot className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold">Chad S.</h2>
+                <p className="text-blue-100 text-sm">Your LendWisely Assistant</p>
               </div>
             </div>
-          ))}
+            <div className="text-right">
+              <p className="text-sm text-blue-100">{getStateDisplay()}</p>
+              <div className="w-32 bg-white/20 rounded-full h-2 mt-1">
+                <div 
+                  className="bg-white h-full rounded-full transition-all duration-500"
+                  style={{ width: `${getProgressPercentage()}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Messages Area */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50">
+          <AnimatePresence>
+            {messages.map((message, index) => (
+              <motion.div
+                key={`${message.id}-${index}`}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ delay: index * 0.1 }}
+                className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                <div className={`flex items-start space-x-3 max-w-xs lg:max-w-md ${
+                  message.type === 'user' ? 'flex-row-reverse space-x-reverse' : ''
+                }`}>
+                  {/* Avatar */}
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                    message.type === 'user' 
+                      ? 'bg-blue-600 text-white' 
+                      : 'bg-green-600 text-white'
+                  }`}>
+                    {message.type === 'user' ? (
+                      <User className="w-4 h-4" />
+                    ) : (
+                      <Bot className="w-4 h-4" />
+                    )}
+                  </div>
+                  
+                  {/* Message Bubble */}
+                  <div className={`rounded-2xl px-4 py-3 ${
+                    message.type === 'user'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white border border-gray-200 text-gray-900 shadow-sm'
+                  }`}>
+                    <p className="text-sm">{message.content}</p>
+                    <p className={`text-xs mt-1 ${
+                      message.type === 'user' ? 'text-blue-100' : 'text-gray-500'
+                    }`}>
+                      {message.timestamp.toLocaleTimeString()}
+                    </p>
+                    
+                    {/* Quick Reply Options */}
+                    {message.options && message.type === 'bot' && (
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        {message.options.map((option, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => handleQuickReply(option)}
+                            className="px-3 py-1 bg-blue-50 text-blue-700 text-xs rounded-full border border-blue-200 hover:bg-blue-100 transition-colors"
+                          >
+                            {option}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+
+          {/* Typing Indicator */}
+          {isTyping && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex justify-start"
+            >
+              <div className="flex items-start space-x-3">
+                <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center">
+                  <Bot className="w-4 h-4 text-white" />
+                </div>
+                <div className="bg-white rounded-2xl px-4 py-3 border border-gray-200">
+                  <div className="flex space-x-1">
+                    <motion.div
+                      className="w-2 h-2 bg-gray-400 rounded-full"
+                      animate={{ scale: [1, 1.2, 1] }}
+                      transition={{ duration: 1, repeat: Infinity, delay: 0 }}
+                    />
+                    <motion.div
+                      className="w-2 h-2 bg-gray-400 rounded-full"
+                      animate={{ scale: [1, 1.2, 1] }}
+                      transition={{ duration: 1, repeat: Infinity, delay: 0.2 }}
+                    />
+                    <motion.div
+                      className="w-2 h-2 bg-gray-400 rounded-full"
+                      animate={{ scale: [1, 1.2, 1] }}
+                      transition={{ duration: 1, repeat: Infinity, delay: 0.4 }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          <div ref={messagesEndRef} />
         </div>
 
         {/* Message Input */}
-        <div className="p-4 border-t border-gray-200">
-          <div className="flex space-x-2">
-            <input
-              type="text"
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Type your message..."
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+        <div className="border-t border-gray-200 p-4 bg-white">
+          <div className="flex space-x-3">
+            <div className="flex-1">
+              <input
+                type="text"
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder="Type your message..."
+                disabled={isTyping}
+                className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
+              />
+            </div>
             <button
-              onClick={handleSendMessage}
-              disabled={!inputText.trim()}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={() => handleSendMessage()}
+              disabled={!inputText.trim() || isTyping}
+              className="px-6 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              Send
+              <Send className="w-4 h-4" />
             </button>
           </div>
         </div>
       </div>
 
-      {/* Merchant Profile Panel */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Merchant Profile</h3>
-        
-        {currentMerchant ? (
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Legal Name</label>
-              <p className="text-sm text-gray-900">{currentMerchant.legal_name}</p>
-            </div>
-            
-            {currentMerchant.phone && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Phone</label>
-                <p className="text-sm text-gray-900">{currentMerchant.phone}</p>
-              </div>
-            )}
-            
-            {currentMerchant.email && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Email</label>
-                <p className="text-sm text-gray-900">{currentMerchant.email}</p>
-              </div>
-            )}
+      {/* Information Panel */}
+      <div className="bg-white rounded-xl shadow-lg p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+          <User className="w-5 h-5 mr-2 text-blue-600" />
+          Application Progress
+        </h3>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Status</label>
-              <span className={`inline-flex px-2 py-1 text-xs rounded-full ${
-                currentMerchant.status === 'existing' 
-                  ? 'bg-green-100 text-green-800' 
-                  : 'bg-blue-100 text-blue-800'
-              }`}>
-                {currentMerchant.status}
-              </span>
+        {/* Current Field */}
+        {pendingField && (
+          <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div className="flex items-center">
+              <Clock className="w-4 h-4 text-yellow-600 mr-2" />
+              <span className="text-sm font-medium text-yellow-800">Collecting</span>
             </div>
-
-            {fieldStates.length > 0 && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Field Status</label>
-                <div className="space-y-2">
-                  {fieldStates.map((field) => (
-                    <div key={field.field_id} className="flex justify-between items-center text-xs">
-                      <span className="text-gray-600">{field.field_id}</span>
-                      <span className="text-green-600">✓ {field.confidence * 100}%</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="text-center text-gray-500 py-8">
-            <p>Start a conversation to see merchant information</p>
+            <p className="text-sm text-yellow-700 mt-1">
+              {fieldRegistry[pendingField]?.label || pendingField}
+            </p>
           </div>
         )}
+
+        {/* Collected Fields */}
+        <div className="space-y-3">
+          <h4 className="text-sm font-medium text-gray-700">Information Collected:</h4>
+          {getCollectedFields().length > 0 ? (
+            <div className="space-y-2">
+              {getCollectedFields().map((field) => (
+                <div key={field.fieldId} className="flex items-center justify-between p-2 bg-green-50 rounded-lg">
+                  <div className="flex items-center">
+                    <Check className="w-4 h-4 text-green-600 mr-2" />
+                    <span className="text-sm text-gray-900">{field.label}</span>
+                  </div>
+                  <span className="text-xs text-green-600 font-medium">
+                    {((field.confidence || 1) * 100).toFixed(0)}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500 italic">No information collected yet</p>
+          )}
+        </div>
+
+        {/* Conversation State Info */}
+        <div className="mt-6 pt-6 border-t border-gray-200">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-600">Status:</span>
+            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+              currentState === 'complete' 
+                ? 'bg-green-100 text-green-800'
+                : currentState === 'collecting'
+                ? 'bg-blue-100 text-blue-800'
+                : 'bg-gray-100 text-gray-800'
+            }`}>
+              {getStateDisplay()}
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   )
