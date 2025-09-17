@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, type KeyboardEvent } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Send, Bot, User, Check, Clock } from 'lucide-react'
 import { useAppStore } from '../state/useAppStore'
@@ -15,7 +15,7 @@ interface ChatMessage {
   options?: string[]
 }
 
-const Chat: React.FC = () => {
+export default function Chat() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputText, setInputText] = useState('')
   const [isTyping, setIsTyping] = useState(false)
@@ -228,7 +228,7 @@ const Chat: React.FC = () => {
     handleSendMessage(option)
   }
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyPress = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSendMessage()
@@ -270,31 +270,34 @@ const Chat: React.FC = () => {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-[calc(100vh-8rem)]">
-      {/* Main Chat Interface */}
-      <div className="lg:col-span-2 glass-panel flex flex-col overflow-hidden">
-        {/* Chat Header */}
-        <div className="bg-gradient-to-r from-indigo-500 via-purple-600 to-indigo-700 text-white p-8 relative overflow-hidden">
-          {/* Background decoration */}
-          <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/20 to-purple-600/20 backdrop-blur-3xl"></div>
-          <div className="absolute -top-8 -right-8 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
-          <div className="absolute -bottom-8 -left-8 w-24 h-24 bg-white/5 rounded-full blur-xl"></div>
-          
-          <div className="relative z-10 flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="w-14 h-14 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center shadow-xl border border-white/30">
-                <Bot className="w-7 h-7" />
+    <div className="flex flex-col lg:flex-row h-full min-h-0 w-full bg-slate-50">
+      {/* Main Chat Panel */}
+      <div className="flex-1 flex flex-col bg-white border-r border-slate-200">
+        {/* Clean Chat Header */}
+        <div className="px-6 py-4 border-b border-slate-200 bg-white">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-gradient-to-r from-primary-500 to-primary-600 rounded-full flex items-center justify-center shadow-md">
+                <Bot className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h2 className="text-2xl font-bold">Chad</h2>
-                <p className="text-indigo-100 text-sm font-medium">Your AI Funding Representative</p>
+                <h2 className="text-lg font-semibold text-slate-900">Chad</h2>
+                <p className="text-sm text-slate-500">AI Funding Representative</p>
               </div>
             </div>
-            <div className="text-right">
-              <p className="text-sm text-indigo-100 font-medium mb-2">{getStateDisplay()}</p>
-              <div className="w-36 bg-white/20 rounded-full h-2.5">
+            <div className="flex items-center space-x-3">
+              <div className={`px-3 py-1 rounded-full text-xs font-medium ${
+                currentState === 'complete' 
+                  ? 'bg-success-100 text-success-700'
+                  : currentState === 'collecting'
+                  ? 'bg-primary-100 text-primary-700'
+                  : 'bg-slate-100 text-slate-700'
+              }`}>
+                {getStateDisplay()}
+              </div>
+              <div className="w-24 bg-slate-200 rounded-full h-2">
                 <div 
-                  className="bg-gradient-to-r from-white to-indigo-200 h-full rounded-full transition-all duration-700 shadow-sm"
+                  className="bg-primary-500 h-full rounded-full transition-all duration-500"
                   style={{ width: `${getProgressPercentage()}%` }}
                 />
               </div>
@@ -303,7 +306,7 @@ const Chat: React.FC = () => {
         </div>
 
         {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50">
+        <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50/30">
           <AnimatePresence>
             {messages.map((message, index) => (
               <motion.div
@@ -314,31 +317,25 @@ const Chat: React.FC = () => {
                 transition={{ delay: index * 0.1 }}
                 className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
               >
-                <div className={`flex items-start space-x-3 max-w-xs lg:max-w-md ${
+                <div className={`flex items-end space-x-3 max-w-sm lg:max-w-md ${
                   message.type === 'user' ? 'flex-row-reverse space-x-reverse' : ''
                 }`}>
                   {/* Avatar */}
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                    message.type === 'user' 
-                      ? 'bg-blue-600 text-white' 
-                      : 'bg-green-600 text-white'
-                  }`}>
-                    {message.type === 'user' ? (
-                      <User className="w-4 h-4" />
-                    ) : (
-                      <Bot className="w-4 h-4" />
-                    )}
-                  </div>
+                  {message.type === 'bot' && (
+                    <div className="w-8 h-8 bg-gradient-to-r from-primary-500 to-primary-600 rounded-full flex items-center justify-center shadow-md flex-shrink-0">
+                      <Bot className="w-4 h-4 text-white" />
+                    </div>
+                  )}
                   
                   {/* Message Bubble */}
                   <div className={`rounded-2xl px-4 py-3 ${
                     message.type === 'user'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-white border border-gray-200 text-gray-900 shadow-sm'
+                      ? 'bg-gradient-to-r from-primary-500 to-primary-600 text-white'
+                      : 'bg-white border border-slate-200 text-slate-900 shadow-sm'
                   }`}>
-                    <p className="text-sm">{message.content}</p>
+                    <p className="text-sm break-words">{message.content}</p>
                     <p className={`text-xs mt-1 ${
-                      message.type === 'user' ? 'text-blue-100' : 'text-gray-500'
+                      message.type === 'user' ? 'text-primary-100' : 'text-slate-500'
                     }`}>
                       {message.timestamp.toLocaleTimeString()}
                     </p>
@@ -350,7 +347,7 @@ const Chat: React.FC = () => {
                           <button
                             key={idx}
                             onClick={() => handleQuickReply(option)}
-                            className="px-3 py-1 bg-blue-50 text-blue-700 text-xs rounded-full border border-blue-200 hover:bg-blue-100 transition-colors"
+                            className="px-3 py-1 bg-primary-50 text-primary-700 text-xs rounded-full border border-primary-200 hover:bg-primary-100 transition-colors"
                           >
                             {option}
                           </button>
@@ -370,24 +367,24 @@ const Chat: React.FC = () => {
               animate={{ opacity: 1, y: 0 }}
               className="flex justify-start"
             >
-              <div className="flex items-start space-x-3">
-                <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center">
+              <div className="flex items-end space-x-3">
+                <div className="w-8 h-8 bg-gradient-to-r from-primary-500 to-primary-600 rounded-full flex items-center justify-center shadow-md">
                   <Bot className="w-4 h-4 text-white" />
                 </div>
-                <div className="bg-white rounded-2xl px-4 py-3 border border-gray-200">
+                <div className="bg-white rounded-2xl px-4 py-3 border border-slate-200 shadow-sm">
                   <div className="flex space-x-1">
                     <motion.div
-                      className="w-2 h-2 bg-gray-400 rounded-full"
+                      className="w-2 h-2 bg-slate-400 rounded-full"
                       animate={{ scale: [1, 1.2, 1] }}
                       transition={{ duration: 1, repeat: Infinity, delay: 0 }}
                     />
                     <motion.div
-                      className="w-2 h-2 bg-gray-400 rounded-full"
+                      className="w-2 h-2 bg-slate-400 rounded-full"
                       animate={{ scale: [1, 1.2, 1] }}
                       transition={{ duration: 1, repeat: Infinity, delay: 0.2 }}
                     />
                     <motion.div
-                      className="w-2 h-2 bg-gray-400 rounded-full"
+                      className="w-2 h-2 bg-slate-400 rounded-full"
                       animate={{ scale: [1, 1.2, 1] }}
                       transition={{ duration: 1, repeat: Infinity, delay: 0.4 }}
                     />
@@ -400,24 +397,24 @@ const Chat: React.FC = () => {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Message Input */}
-        <div className="border-t border-gray-200 p-4 bg-white">
-          <div className="flex space-x-3">
+        {/* Clean Message Input */}
+        <div className="border-t border-slate-200 p-6 bg-white">
+          <div className="flex items-end space-x-4">
             <div className="flex-1">
               <input
                 type="text"
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="Type your message..."
+                placeholder="Type your message to Chad..."
                 disabled={isTyping}
-                className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
+                className="input"
               />
             </div>
             <button
               onClick={() => handleSendMessage()}
               disabled={!inputText.trim() || isTyping}
-              className="px-6 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="btn-primary"
             >
               <Send className="w-4 h-4" />
             </button>
@@ -425,61 +422,66 @@ const Chat: React.FC = () => {
         </div>
       </div>
 
-      {/* Information Panel */}
-      <div className="bg-white rounded-xl shadow-lg p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-          <User className="w-5 h-5 mr-2 text-blue-600" />
-          Application Progress
-        </h3>
-
-        {/* Current Field */}
-        {pendingField && (
-          <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <div className="flex items-center">
-              <Clock className="w-4 h-4 text-yellow-600 mr-2" />
-              <span className="text-sm font-medium text-yellow-800">Collecting</span>
-            </div>
-            <p className="text-sm text-yellow-700 mt-1">
-              {fieldRegistry[pendingField]?.label || pendingField}
-            </p>
-          </div>
-        )}
-
-        {/* Collected Fields */}
-        <div className="space-y-3">
-          <h4 className="text-sm font-medium text-gray-700">Information Collected:</h4>
-          {getCollectedFields().length > 0 ? (
-            <div className="space-y-2">
-              {getCollectedFields().map((field) => (
-                <div key={field.fieldId} className="flex items-center justify-between p-2 bg-green-50 rounded-lg">
-                  <div className="flex items-center">
-                    <Check className="w-4 h-4 text-green-600 mr-2" />
-                    <span className="text-sm text-gray-900">{field.label}</span>
-                  </div>
-                  <span className="text-xs text-green-600 font-medium">
-                    {((field.confidence || 1) * 100).toFixed(0)}%
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-gray-500 italic">No information collected yet</p>
-          )}
+      {/* Application Progress Sidebar */}
+      <div className="w-full lg:w-80 bg-white border-l border-slate-200 flex flex-col">
+        <div className="px-6 py-4 border-b border-slate-200">
+          <h3 className="text-lg font-semibold text-slate-900 flex items-center">
+            <User className="w-5 h-5 mr-2 text-primary-600" />
+            Application Progress
+          </h3>
         </div>
 
-        {/* Conversation State Info */}
-        <div className="mt-6 pt-6 border-t border-gray-200">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-600">Status:</span>
-            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-              currentState === 'complete' 
-                ? 'bg-green-100 text-green-800'
-                : currentState === 'collecting'
-                ? 'bg-blue-100 text-blue-800'
-                : 'bg-gray-100 text-gray-800'
-            }`}>
-              {getStateDisplay()}
-            </span>
+        <div className="flex-1 p-6 overflow-y-auto space-y-6">
+
+          {/* Current Field */}
+          {pendingField && (
+            <div className="card border-l-4 border-l-warning-500 bg-warning-50">
+              <div className="flex items-center">
+                <Clock className="w-4 h-4 text-warning-600 mr-2" />
+                <span className="text-sm font-medium text-warning-800">Collecting</span>
+              </div>
+              <p className="text-sm text-warning-700 mt-1">
+                {fieldRegistry[pendingField]?.label || pendingField}
+              </p>
+            </div>
+          )}
+
+          {/* Collected Fields */}
+          <div className="space-y-4">
+            <h4 className="text-sm font-semibold text-slate-700">Information Collected</h4>
+            {getCollectedFields().length > 0 ? (
+              <div className="space-y-2">
+                {getCollectedFields().map((field) => (
+                  <div key={field.fieldId} className="flex items-center justify-between p-3 bg-success-50 rounded-lg border border-success-200">
+                    <div className="flex items-center">
+                      <Check className="w-4 h-4 text-success-600 mr-2" />
+                      <span className="text-sm text-slate-900">{field.label}</span>
+                    </div>
+                    <span className="text-xs text-success-600 font-medium bg-success-100 px-2 py-1 rounded-full">
+                      {((field.confidence || 1) * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-slate-500 italic">No information collected yet</p>
+            )}
+          </div>
+
+          {/* Application Status */}
+          <div className="pt-6 border-t border-slate-200">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-600 font-medium">Application Status</span>
+              <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                currentState === 'complete' 
+                  ? 'bg-success-100 text-success-800'
+                  : currentState === 'collecting'
+                  ? 'bg-primary-100 text-primary-800'
+                  : 'bg-slate-100 text-slate-800'
+              }`}>
+                {getStateDisplay()}
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -487,4 +489,4 @@ const Chat: React.FC = () => {
   )
 }
 
-export default Chat
+// Removed duplicate export
