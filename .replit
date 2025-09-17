@@ -1,8 +1,8 @@
-modules = ["python-3.11", "bash", "nodejs-20"]
+modules = ["python-3.11", "bash", "nodejs-20", "python3"]
 
 [nix]
 channel = "stable-25_05"
-packages = ["libxcrypt"]
+packages = ["cargo", "libiconv", "libxcrypt", "openssl", "pkg-config", "rustc"]
 
 [agent]
 expertMode = true
@@ -54,6 +54,10 @@ externalPort = 80
 [[ports]]
 localPort = 8000
 externalPort = 8000
+
+[[ports]]
+localPort = 46815
+externalPort = 3000
 
 [deployment]
 deploymentTarget = "autoscale"
