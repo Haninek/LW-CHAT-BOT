@@ -6,7 +6,7 @@ dotenv.config();
 
 const envSchema = z.object({
   // Server Configuration
-  PORT: z.string().default('5000').transform(Number),
+  PORT: z.string().default('8080').transform(Number),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   
   // CORS Configuration
