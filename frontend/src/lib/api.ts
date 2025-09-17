@@ -158,6 +158,32 @@ class ApiClient {
     return this.request(endpoint)
   }
 
+  // Merchant resolution (for Rules + Intake Simulator)
+  async resolveMerchant(phone?: string, email?: string) {
+    const params = new URLSearchParams()
+    if (phone) params.append('phone', phone)
+    if (email) params.append('email', email)
+    
+    const queryString = params.toString()
+    const endpoint = `/api/merchants/resolve${queryString ? `?${queryString}` : ''}`
+    
+    try {
+      return await this.request(endpoint, { method: 'GET' })
+    } catch (error) {
+      // If backend doesn't support merchant resolution, return mock data
+      const { sampleMerchants } = await import('./seedData')
+      console.warn('Merchant resolution not available, using mock data')
+      
+      if (phone || email) {
+        // Return existing merchant with some data
+        return { success: true, data: sampleMerchants[1], timestamp: new Date().toISOString() }
+      } else {
+        // Return new merchant
+        return { success: true, data: sampleMerchants[0], timestamp: new Date().toISOString() }
+      }
+    }
+  }
+
   // Rules (if backend supports it)
   async saveRules(rules: any[]) {
     try {
