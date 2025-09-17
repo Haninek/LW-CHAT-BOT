@@ -387,38 +387,37 @@ const RulesStudio: React.FC = () => {
                     </button>
                   </div>
 
-                  <DndContext 
-                    sensors={sensors}
-                    collisionDetection={closestCenter}
-                    onDragEnd={handleDragEnd}
-                  >
-                    <SortableContext 
-                      items={rules.map(rule => rule.id)}
-                      strategy={verticalListSortingStrategy}
+                  {rules.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      No rules created yet. Click "Add Rule" to get started.
+                    </div>
+                  ) : (
+                    <DndContext 
+                      sensors={sensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={handleDragEnd}
                     >
-                      <div className="space-y-2">
-                        {rules
-                          .sort((a, b) => a.priority - b.priority)
-                          .map((rule) => (
-                            <SortableRule
-                              key={rule.id}
-                              rule={rule}
-                              isEditing={editingRule?.id === rule.id}
-                              onEdit={handleEditRule}
-                              onToggle={handleToggleRule}
-                              onDelete={handleDeleteRule}
-                            />
-                          ))}
-                      </div>
-                    </SortableContext>
-                  </DndContext>
-                    
-                    {rules.length === 0 && (
-                      <div className="text-center py-8 text-gray-500">
-                        No rules created yet. Click "Add Rule" to get started.
-                      </div>
-                    )}
-                  </div>
+                      <SortableContext 
+                        items={rules.map(rule => rule.id)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        <div className="space-y-2">
+                          {rules
+                            .sort((a, b) => a.priority - b.priority)
+                            .map((rule) => (
+                              <SortableRule
+                                key={rule.id}
+                                rule={rule}
+                                isEditing={editingRule?.id === rule.id}
+                                onEdit={handleEditRule}
+                                onToggle={handleToggleRule}
+                                onDelete={handleDeleteRule}
+                              />
+                            ))}
+                        </div>
+                      </SortableContext>
+                    </DndContext>
+                  )}
                 </div>
 
                 {/* Rule Editor */}
