@@ -74,7 +74,7 @@ export const useAppStore = create<AppState>()(
     (set, get) => ({
       // API Configuration
       apiConfig: {
-        baseUrl: import.meta.env.VITE_API_BASE || 'http://localhost:8080',
+        baseUrl: import.meta.env.VITE_API_BASE || '',
         apiKey: import.meta.env.VITE_API_KEY || '',
         idempotencyEnabled: true
       },

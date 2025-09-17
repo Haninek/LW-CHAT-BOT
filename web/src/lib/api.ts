@@ -49,14 +49,14 @@ class ApiClient {
 
   // Health endpoints
   async getHealth() {
-    return this.request<{ status: string; uptime: number; timestamp: string }>('/healthz')
+    return this.request<{ status: string; uptime: number; timestamp: string }>('/api/healthz')
   }
 
   async getReadiness() {
     return this.request<{ 
       ready: boolean
       checks: Record<string, boolean>
-    }>('/readyz')
+    }>('/api/readyz')
   }
 
   // Bank analysis
