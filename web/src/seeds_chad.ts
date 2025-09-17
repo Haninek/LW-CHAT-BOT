@@ -57,9 +57,9 @@ export const templatesChad: Template[] = [
 
 export const rulesChad: Rule[] = [
   {
-    id: "r0-set-persona-chad",
+    id: "r0-set-persona-chad", 
     name: "Set persona: Chad",
-    enabled: true,
+    enabled: false, // Disable this rule - we handle greetings manually now
     priority: 1,
     when: { kind: "equals", field: "true", value: true },
     then: [ { type: "setPersona", style: "friendly" }, { type: "message", templateId: "chat_greeting_potential" } ]

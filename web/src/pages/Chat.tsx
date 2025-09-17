@@ -100,12 +100,12 @@ const Chat: React.FC = () => {
     const context = conversationManager.getContext()
     const merchant = context.merchant
     
-    // Build context for rule evaluation
+    // Build context for rule evaluation  
     const ctx = {
       "merchant.status": merchant?.status || "new", 
-      "true": true, // Fix for r0 rule condition
+      "conversation.started": false, // Track if we've started the conversation
       firstName: merchant?.fields?.['owner.first']?.value || 'there',
-      lenderName: "UW Wizard",
+      lenderName: "UW Wizard", 
       intakeLink: window.location.origin + "/chat",
       recipientEmail: merchant?.fields?.['contact.email']?.value || "",
       ...Object.fromEntries(Object.entries(merchant?.fields || {}).map(([k,v]) => [k, v?.value || ""]))
@@ -113,16 +113,10 @@ const Chat: React.FC = () => {
 
     setMerchantContext(ctx)
 
-    // Use Chad's rules to determine initial response
-    const actions = evaluateRules(ctx)
-    if (actions.length > 0) {
-      executeActions(actions, ctx)
-    } else {
-      // Fallback if no rules match
-      const persona = getPersona()
-      const greeting = `Hey! I'm ${persona.displayName || 'Chad'}. Are you a new merchant applying for the first time, or returning with an existing application?`
-      addBotMessage(greeting, ['New merchant', 'Returning merchant'])
-    }
+    // Start conversation with appropriate greeting
+    const persona = getPersona()
+    const greeting = `Hey! I'm ${persona.displayName || 'Chad'}. Are you a new merchant applying for the first time, or returning with an existing application?`
+    addBotMessage(greeting, ['New merchant', 'Returning merchant'])
   }, [])
 
   useEffect(() => {
@@ -198,7 +192,8 @@ const Chat: React.FC = () => {
         if (text.toLowerCase().includes('new') || text.toLowerCase().includes('first time')) {
           const updatedContext = {
             ...merchantContext,
-            "merchant.status": "new"
+            "merchant.status": "new",
+            "conversation.started": true
           }
           setMerchantContext(updatedContext)
           
@@ -207,7 +202,8 @@ const Chat: React.FC = () => {
         } else if (text.toLowerCase().includes('existing') || text.toLowerCase().includes('returning')) {
           const updatedContext = {
             ...merchantContext, 
-            "merchant.status": "existing"
+            "merchant.status": "existing",
+            "conversation.started": true
           }
           setMerchantContext(updatedContext)
           

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import { useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom'
 import { useAppStore } from './state/useAppStore'
 
@@ -11,6 +11,7 @@ import OffersLab from './pages/OffersLab'
 import Background from './pages/Background'
 import Sign from './pages/Sign'
 import Settings from './pages/Settings'
+import Campaigns from './pages/Campaigns'
 
 function Navigation() {
   const location = useLocation()
@@ -19,6 +20,7 @@ function Navigation() {
     { path: '/dashboard', name: 'Dashboard', icon: '📊' },
     { path: '/chat', name: 'Chat', icon: '💬' },
     { path: '/merchants', name: 'Merchants', icon: '🏢' },
+    { path: '/campaigns', name: 'Campaigns', icon: '📢' },
     { path: '/connectors', name: 'Connectors', icon: '🔗' },
     { path: '/offers', name: 'Offers Lab', icon: '💰' },
     { path: '/background', name: 'Background', icon: '🔍' },
@@ -91,6 +93,7 @@ function App() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/chat" element={<Chat />} />
             <Route path="/merchants" element={<Merchants />} />
+            <Route path="/campaigns" element={<Campaigns />} />
             <Route path="/connectors" element={<Connectors />} />
             <Route path="/offers" element={<OffersLab />} />
             <Route path="/background" element={<Background />} />
