@@ -2,11 +2,116 @@ import React, { useState } from 'react'
 import { motion } from 'framer-motion'
 import { Plus, Settings, Play, Edit, Trash2, GripVertical, Save, Eye, EyeOff, Link } from 'lucide-react'
 import { Link as RouterLink } from 'react-router-dom'
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import {
+  useSortable,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { useAppStore } from '../state/useAppStore'
 import { Rule, Condition, Action, FieldId } from '../types'
 import { fieldRegistry } from '../lib/fieldRegistry'
 import { v4 as uuidv4 } from 'uuid'
 import { apiClient } from '../lib/api'
+
+// Sortable Rule Component
+const SortableRule: React.FC<{ 
+  rule: Rule, 
+  isEditing: boolean, 
+  onEdit: (rule: Rule) => void, 
+  onToggle: (rule: Rule) => void, 
+  onDelete: (ruleId: string) => void 
+}> = ({ rule, isEditing, onEdit, onToggle, onDelete }) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id: rule.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  return (
+    <motion.div
+      ref={setNodeRef}
+      style={style}
+      className={`p-4 border rounded-lg cursor-pointer transition-colors ${
+        isEditing 
+          ? 'border-blue-500 bg-blue-50' 
+          : 'border-gray-200 hover:border-gray-300'
+      }`}
+      onClick={() => onEdit(rule)}
+    >
+      <div className="flex items-center gap-3">
+        <button 
+          {...attributes}
+          {...listeners}
+          className="cursor-grab hover:cursor-grabbing text-gray-400"
+        >
+          <GripVertical className="w-4 h-4" />
+        </button>
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <span className="font-medium">{rule.name}</span>
+            <span className="text-xs bg-gray-100 px-2 py-1 rounded">
+              Priority: {rule.priority}
+            </span>
+            {rule.enabled ? (
+              <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                Enabled
+              </span>
+            ) : (
+              <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded">
+                Disabled
+              </span>
+            )}
+          </div>
+          <div className="text-sm text-gray-600 mt-1">
+            When: {rule.when.kind} | Then: {rule.then.length} actions
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggle(rule)
+            }}
+            className="p-1 hover:bg-gray-100 rounded"
+          >
+            {rule.enabled ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelete(rule.id)
+            }}
+            className="p-1 hover:bg-red-100 rounded"
+          >
+            <Trash2 className="w-4 h-4 text-red-600" />
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  )
+}
 
 const RulesStudio: React.FC = () => {
   const {
@@ -28,11 +133,38 @@ const RulesStudio: React.FC = () => {
   const [jsonText, setJsonText] = useState('')
   const [isSaving, setIsSaving] = useState(false)
 
-  // Visual condition builder state
+  // Visual condition builder state  
   const [conditionType, setConditionType] = useState<'equals' | 'missingAny' | 'expiredAny' | 'notExpiredAll' | 'and' | 'or'>('equals')
   const [conditionField, setConditionField] = useState('')
   const [conditionValue, setConditionValue] = useState('')
   const [selectedFields, setSelectedFields] = useState<FieldId[]>([])
+
+  // Drag & drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
+
+  const handleDragEnd = (event: any) => {
+    const { active, over } = event
+
+    if (active.id !== over.id) {
+      const oldIndex = rules.findIndex(rule => rule.id === active.id)
+      const newIndex = rules.findIndex(rule => rule.id === over.id)
+      
+      const reorderedRules = arrayMove(rules, oldIndex, newIndex)
+      
+      // Update priorities to match new order
+      const updatedRules = reorderedRules.map((rule, index) => ({
+        ...rule,
+        priority: index + 1
+      }))
+      
+      setRules(updatedRules)
+    }
+  }
 
   const handleCreateRule = () => {
     const newRule: Rule = {
@@ -194,64 +326,31 @@ const RulesStudio: React.FC = () => {
                     </button>
                   </div>
 
-                  <div className="space-y-2">
-                    {rules
-                      .sort((a, b) => a.priority - b.priority)
-                      .map((rule) => (
-                        <motion.div
-                          key={rule.id}
-                          className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                            editingRule?.id === rule.id 
-                              ? 'border-blue-500 bg-blue-50' 
-                              : 'border-gray-200 hover:border-gray-300'
-                          }`}
-                          onClick={() => handleEditRule(rule)}
-                        >
-                          <div className="flex items-center gap-3">
-                            <GripVertical className="w-4 h-4 text-gray-400 cursor-grab" />
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2">
-                                <span className="font-medium">{rule.name}</span>
-                                <span className="text-xs bg-gray-100 px-2 py-1 rounded">
-                                  Priority: {rule.priority}
-                                </span>
-                                {rule.enabled ? (
-                                  <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
-                                    Enabled
-                                  </span>
-                                ) : (
-                                  <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded">
-                                    Disabled
-                                  </span>
-                                )}
-                              </div>
-                              <div className="text-sm text-gray-600 mt-1">
-                                When: {rule.when.kind} | Then: {rule.then.length} actions
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleToggleRule(rule)
-                                }}
-                                className="p-1 hover:bg-gray-100 rounded"
-                              >
-                                {rule.enabled ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleDeleteRule(rule.id)
-                                }}
-                                className="p-1 hover:bg-red-100 rounded"
-                              >
-                                <Trash2 className="w-4 h-4 text-red-600" />
-                              </button>
-                            </div>
-                          </div>
-                        </motion.div>
-                      ))}
+                  <DndContext 
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleDragEnd}
+                  >
+                    <SortableContext 
+                      items={rules.map(rule => rule.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div className="space-y-2">
+                        {rules
+                          .sort((a, b) => a.priority - b.priority)
+                          .map((rule) => (
+                            <SortableRule
+                              key={rule.id}
+                              rule={rule}
+                              isEditing={editingRule?.id === rule.id}
+                              onEdit={handleEditRule}
+                              onToggle={handleToggleRule}
+                              onDelete={handleDeleteRule}
+                            />
+                          ))}
+                      </div>
+                    </SortableContext>
+                  </DndContext>
                     
                     {rules.length === 0 && (
                       <div className="text-center py-8 text-gray-500">
