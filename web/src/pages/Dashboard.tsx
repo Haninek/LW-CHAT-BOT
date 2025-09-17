@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { 
   Activity, 
@@ -11,7 +11,7 @@ import {
   Zap
 } from 'lucide-react'
 import { apiClient } from '../lib/api'
-import { useAppStore } from '../state/useAppStore'
+// import { useAppStore } from '../state/useAppStore'
 
 interface HealthData {
   status: string
@@ -111,7 +111,7 @@ export default function Dashboard() {
   const [healthData, setHealthData] = useState<HealthData | null>(null)
   const [readinessData, setReadinessData] = useState<ReadinessData | null>(null)
   const [loading, setLoading] = useState(true)
-  const seedDemoData = useAppStore(state => state.seedDemoData)
+  // const seedDemoData = useAppStore(state => state.seedDemoData) // TODO: Add if needed
 
   useEffect(() => {
     loadDashboardData()
@@ -125,8 +125,8 @@ export default function Dashboard() {
         apiClient.getReadiness()
       ])
       
-      setHealthData(healthResponse.data)
-      setReadinessData(readinessResponse.data)
+      setHealthData(healthResponse.data || null)
+      setReadinessData(readinessResponse.data || null)
     } catch (error) {
       console.error('Failed to load dashboard data:', error)
     } finally {
@@ -143,8 +143,8 @@ export default function Dashboard() {
   const getHealthStatus = () => {
     if (!healthData) return { status: 'unknown', color: 'warning' }
     return healthData.status === 'healthy' 
-      ? { status: 'Healthy', color: 'success' as const }
-      : { status: 'Unhealthy', color: 'accent' as const }
+      ? { status: 'Healthy', color: 'success' }
+      : { status: 'Unhealthy', color: 'warning' }
   }
 
   const getReadinessCount = () => {
@@ -204,7 +204,7 @@ export default function Dashboard() {
               value={health.status}
               subtitle={healthData ? `Uptime: ${formatUptime(healthData.uptime)}` : undefined}
               icon={health.color === 'success' ? CheckCircle : AlertCircle}
-              color={health.color}
+              color={health.color as any}
             />
             
             <StatCard
@@ -248,24 +248,24 @@ export default function Dashboard() {
           <h2 className="text-lg font-semibold text-slate-900 mb-4">Quick Actions</h2>
           <div className="space-y-3">
             <QuickAction
-              title="Seed Demo Data"
-              description="Load sample rules and templates to get started"
-              icon={Zap}
-              onClick={seedDemoData}
+              title="View Merchants"
+              description="See all registered merchants and their status"
+              icon={Users}
+              onClick={() => window.location.href = '/merchants'}
               color="primary"
             />
             <QuickAction
               title="Start Chat Session"
-              description="Begin a new conversation with the chatbot"
-              icon={Users}
+              description="Begin a new conversation with Chad the chatbot"
+              icon={Activity}
               onClick={() => window.location.href = '/chat'}
               color="success"
             />
             <QuickAction
-              title="Configure Rules"
-              description="Set up conversation flow and automation rules"
-              icon={Activity}
-              onClick={() => window.location.href = '/rules'}
+              title="SMS Campaigns"
+              description="Create and manage SMS marketing campaigns"
+              icon={DollarSign}
+              onClick={() => window.location.href = '/campaigns'}
               color="warning"
             />
           </div>
