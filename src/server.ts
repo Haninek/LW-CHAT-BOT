@@ -56,7 +56,7 @@ app.use(limiter);
 // Body parsing middleware with size limits
 app.use(express.json({ 
   limit: '50mb', // Allow larger payloads for PDF uploads
-  verify: (req, res, buf) => {
+  verify: (req, _res, buf) => {
     // Store raw body for signature verification if needed
     (req as any).rawBody = buf;
   }
@@ -107,17 +107,17 @@ async function initializeDatabase(): Promise<void> {
 
 if (require.main === module) {
   initializeDatabase().then(() => {
-    app.listen(port, () => {
-      console.log(`🚀 Server running on port ${port}`);
+    app.listen(port, '0.0.0.0', () => {
+      console.log(`🚀 Server running on http://0.0.0.0:${port}`);
       console.log(`📊 Environment: ${env.NODE_ENV}`);
-      console.log(`🔗 Health check: http://localhost:${port}/healthz`);
-      console.log(`🏦 Bank analysis: http://localhost:${port}/api/bank/parse`);
-      console.log(`💰 Offers: http://localhost:${port}/api/offers`);
-      console.log(`🔗 Plaid: http://localhost:${port}/api/plaid/link-token`);
-      console.log(`💬 SMS webhook: http://localhost:${port}/api/sms/cherry/webhook`);
-      console.log(`✍️  Sign webhook: http://localhost:${port}/api/sign/webhook`);
-      console.log(`🔍 Background checks: http://localhost:${port}/api/background/check`);
-      console.log(`📋 Events feed: http://localhost:${port}/api/events`);
+      console.log(`🔗 Health check: http://0.0.0.0:${port}/healthz`);
+      console.log(`🏦 Bank analysis: http://0.0.0.0:${port}/api/bank/parse`);
+      console.log(`💰 Offers: http://0.0.0.0:${port}/api/offers`);
+      console.log(`🔗 Plaid: http://0.0.0.0:${port}/api/plaid/link-token`);
+      console.log(`💬 SMS webhook: http://0.0.0.0:${port}/api/sms/cherry/webhook`);
+      console.log(`✍️  Sign webhook: http://0.0.0.0:${port}/api/sign/webhook`);
+      console.log(`🔍 Background checks: http://0.0.0.0:${port}/api/background/check`);
+      console.log(`📋 Events feed: http://0.0.0.0:${port}/api/events`);
     });
   }).catch(error => {
     console.error('Failed to start server:', error);

@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     )
 
     # Server settings
-    PORT: int = Field(default=8080, description="Server port")
+    PORT: int = Field(default=8081, description="Server port")
     DEBUG: bool = Field(default=False, description="Debug mode")
     
     # CORS settings
