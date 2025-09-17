@@ -25,9 +25,10 @@ export class CherryClient {
     this.baseUrl = (baseUrl || env.CHERRY_BASE_URL).replace(/\/$/, '');
     this.apiKey = apiKey || env.CHERRY_API_KEY || '';
 
-    if (!this.apiKey) {
+    // Only require API key in production or when actually making requests
+    if (!this.apiKey && env.NODE_ENV === 'production') {
       throw new AppError(
-        'Cherry API key is required',
+        'Cherry API key is required in production',
         500,
         'CHERRY_API_KEY_MISSING'
       );
@@ -35,6 +36,14 @@ export class CherryClient {
   }
 
   private async makeRequest<T>(endpoint: string, body: object): Promise<T> {
+    if (!this.apiKey) {
+      throw new AppError(
+        'Cherry API key is required for making requests',
+        500,
+        'CHERRY_API_KEY_MISSING'
+      );
+    }
+
     const url = `${this.baseUrl}${endpoint}`;
     
     try {

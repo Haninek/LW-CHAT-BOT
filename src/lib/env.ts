@@ -60,14 +60,16 @@ let env: Env;
 try {
   env = envSchema.parse(process.env);
   
-  // Validate provider-specific requirements
-  if (env.SIGN_PROVIDER === 'docusign') {
-    if (!env.DOCUSIGN_TOKEN || !env.DOCUSIGN_ACCOUNT_ID) {
-      throw new Error('DOCUSIGN_TOKEN and DOCUSIGN_ACCOUNT_ID are required when SIGN_PROVIDER=docusign');
-    }
-  } else if (env.SIGN_PROVIDER === 'dropboxsign') {
-    if (!env.DROPBOX_SIGN_API_KEY) {
-      throw new Error('DROPBOX_SIGN_API_KEY is required when SIGN_PROVIDER=dropboxsign');
+  // Validate provider-specific requirements in production
+  if (env.NODE_ENV === 'production') {
+    if (env.SIGN_PROVIDER === 'docusign') {
+      if (!env.DOCUSIGN_TOKEN || !env.DOCUSIGN_ACCOUNT_ID) {
+        throw new Error('DOCUSIGN_TOKEN and DOCUSIGN_ACCOUNT_ID are required when SIGN_PROVIDER=docusign');
+      }
+    } else if (env.SIGN_PROVIDER === 'dropboxsign') {
+      if (!env.DROPBOX_SIGN_API_KEY) {
+        throw new Error('DROPBOX_SIGN_API_KEY is required when SIGN_PROVIDER=dropboxsign');
+      }
     }
   }
 } catch (error) {

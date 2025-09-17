@@ -207,7 +207,6 @@ Return the metrics in the exact JSON format specified.`;
 
     return this.analyzeWithRetry(files);
   }
-}
 
   async explainOffers(metrics: object, offers: Array<{ amount: number; fee: number; term_days: number; payback: number; est_daily: number }>): Promise<string[]> {
     const systemPrompt = `You are a financial advisor explaining merchant cash advance offers. Generate exactly 3 concise bullet points for each offer explaining why it's suitable.
