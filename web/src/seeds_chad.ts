@@ -61,8 +61,8 @@ export const rulesChad: Rule[] = [
     name: "Set persona: Chad",
     enabled: true,
     priority: 1,
-    when: { kind: "equals", field: "always", value: true },
-    then: [ { type: "setPersona", style: "friendly" } ]
+    when: { kind: "equals", field: "true", value: true },
+    then: [ { type: "setPersona", style: "friendly" }, { type: "message", templateId: "chat_greeting_potential" } ]
   },
   {
     id: "r1-entry-potential",

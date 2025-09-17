@@ -103,7 +103,7 @@ const Chat: React.FC = () => {
     // Build context for rule evaluation
     const ctx = {
       "merchant.status": merchant?.status || "new", 
-      "always": true, // Fix for r0 rule
+      "true": true, // Fix for r0 rule condition
       firstName: merchant?.fields?.['owner.first']?.value || 'there',
       lenderName: "UW Wizard",
       intakeLink: window.location.origin + "/chat",
