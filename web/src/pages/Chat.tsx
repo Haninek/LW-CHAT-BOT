@@ -5,6 +5,7 @@ import { useAppStore } from '../state/useAppStore'
 import { ConversationManager, ConversationState } from '../lib/conversation/manager'
 import { fieldRegistry } from '../lib/fieldRegistry'
 import { FieldId } from '../types'
+import { Persona, Template, Rule, Action } from '../seeds_chad'
 
 interface ChatMessage {
   id: string
@@ -21,14 +22,107 @@ const Chat: React.FC = () => {
   const [conversationManager] = useState(() => new ConversationManager())
   const [currentState, setCurrentState] = useState<ConversationState>('greeting')
   const [pendingField, setPendingField] = useState<FieldId | null>(null)
+  const [pendingFields, setPendingFields] = useState<FieldId[]>([])
+  const [merchantContext, setMerchantContext] = useState<Record<string, any>>({})
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const { updateMerchantField } = useAppStore()
 
+  // Chad seeds helpers
+  const getPersona = (): Persona => JSON.parse(localStorage.getItem("UW_PERSONA") || "{}")
+  const getTemplates = (): Template[] => JSON.parse(localStorage.getItem("UW_TEMPLATES") || "[]")
+  const getRules = (): Rule[] => JSON.parse(localStorage.getItem("UW_RULES") || "[]")
+
+  const render = (tplId: string, ctx: Record<string, any>) => {
+    const tpl = getTemplates().find(t => t.id === tplId)
+    if (!tpl) return ""
+    return tpl.text.replace(/\{\{([^}]+)\}\}/g, (_, k) => (ctx[k.trim()] ?? ""))
+  }
+
+  // Rule evaluator: runs first enabled rule whose condition matches
+  function evaluateRules(context: Record<string, any>): Action[] {
+    const rules = getRules().filter(r => r.enabled)
+      .sort((a,b)=> a.priority - b.priority)
+    
+    const has = (path: string) => {
+      const value = context[path]
+      return value !== undefined && value !== null && value !== ""
+    }
+    
+    const missingAny = (fields: string[]) => fields.some(f => !has(f))
+    const notExpiredAll = (fields: string[]) => fields.every(f => has(f))
+
+    const test = (c:any):boolean => {
+      if (c.kind === "equals") return (context[c.field] ?? null) === c.value
+      if (c.kind === "missingAny") return missingAny(c.fields)
+      if (c.kind === "notExpiredAll") return notExpiredAll(c.fields)
+      if (c.kind === "and") return c.all.every(test)
+      if (c.kind === "or")  return c.any.some(test)
+      return false
+    }
+
+    for (const r of rules) if (test(r.when)) return r.then as Action[]
+    return []
+  }
+
+  // Execute Chad's rule-based actions
+  const executeActions = (actions: Action[], context: Record<string, any>) => {
+    for (const action of actions) {
+      if (action.type === "message") {
+        const message = render(action.templateId, context)
+        addBotMessage(message)
+      }
+      if (action.type === "ask" || action.type === "confirm") {
+        // Queue max 2 fields at a time
+        const fields = action.fields.slice(0, 2) as FieldId[]
+        if (fields.length > 0) {
+          setPendingFields(fields)
+          setCurrentState('collecting')
+          
+          // Ask for the first field
+          const fieldId = fields[0]
+          const field = fieldRegistry[fieldId]
+          if (field) {
+            const prompt = action.type === "ask" 
+              ? `What's your ${field.label.toLowerCase()}?`
+              : `I have your ${field.label.toLowerCase()} as ${context[fieldId] || 'unknown'}. Is this correct?`
+            
+            addBotMessage(prompt)
+            setPendingField(fieldId)
+          }
+        }
+        break // Only handle first ask/confirm action
+      }
+    }
+  }
+
   useEffect(() => {
-    // Chad S. introduces himself
-    const greeting = conversationManager.getGreeting()
-    addBotMessage(greeting.message, greeting.options)
-    setCurrentState('greeting')
+    // Initialize Chad with seed-based conversation
+    const context = conversationManager.getContext()
+    const merchant = context.merchant
+    
+    // Build context for rule evaluation
+    const ctx = {
+      "merchant.status": merchant?.status || "new", 
+      "always": true, // Fix for r0 rule
+      firstName: merchant?.fields?.['owner.first']?.value || 'there',
+      lenderName: "UW Wizard",
+      intakeLink: window.location.origin + "/chat",
+      recipientEmail: merchant?.fields?.['contact.email']?.value || "",
+      ...Object.fromEntries(Object.entries(merchant?.fields || {}).map(([k,v]) => [k, v?.value || ""]))
+    }
+
+    setMerchantContext(ctx)
+
+    // Use Chad's rules to determine initial response
+    const actions = evaluateRules(ctx)
+    if (actions.length > 0) {
+      executeActions(actions, ctx)
+    } else {
+      // Fallback if no rules match
+      const persona = getPersona()
+      const greeting = `Hey! I'm ${persona.displayName || 'Chad'}. Are you a new merchant applying for the first time, or returning with an existing application?`
+      addBotMessage(greeting, ['New merchant', 'Returning merchant'])
+    }
   }, [])
 
   useEffect(() => {
@@ -66,24 +160,67 @@ const Chat: React.FC = () => {
 
     // Simulate typing delay for more natural feel
     setTimeout(() => {
-      const response = conversationManager.processUserInput(text)
-      
-      addBotMessage(response.message, response.options)
-      
-      if (response.state) {
-        setCurrentState(response.state)
-      }
-      
-      if (response.pendingField !== undefined) {
-        setPendingField(response.pendingField)
-      }
+      // Handle seed-driven conversation
+      if (pendingField) {
+        // Store the field value
+        const updatedContext = {
+          ...merchantContext,
+          [pendingField]: text
+        }
+        setMerchantContext(updatedContext)
+        updateMerchantField(pendingField, text, 'chat')
 
-      // Update merchant data if we have a field update
-      const context = conversationManager.getContext()
-      if (context.merchant && pendingField && !response.pendingField) {
-        const fieldValue = context.merchant.fields[pendingField]?.value
-        if (fieldValue) {
-          updateMerchantField(pendingField, fieldValue, 'chat')
+        // Move to next field or re-evaluate rules
+        const remainingFields = pendingFields.slice(1)
+        if (remainingFields.length > 0) {
+          const nextFieldId = remainingFields[0]
+          const field = fieldRegistry[nextFieldId]
+          if (field) {
+            addBotMessage(`What's your ${field.label.toLowerCase()}?`)
+            setPendingField(nextFieldId)
+            setPendingFields(remainingFields)
+          }
+        } else {
+          // All fields collected, re-evaluate rules
+          setPendingField(null)
+          setPendingFields([])
+          
+          const actions = evaluateRules(updatedContext)
+          if (actions.length > 0) {
+            executeActions(actions, updatedContext)
+          } else {
+            addBotMessage("Thanks! Let me review your information.")
+            setCurrentState('complete')
+          }
+        }
+      } else {
+        // Handle initial responses (new vs existing merchant)
+        if (text.toLowerCase().includes('new') || text.toLowerCase().includes('first time')) {
+          const updatedContext = {
+            ...merchantContext,
+            "merchant.status": "new"
+          }
+          setMerchantContext(updatedContext)
+          
+          const actions = evaluateRules(updatedContext)
+          executeActions(actions, updatedContext)
+        } else if (text.toLowerCase().includes('existing') || text.toLowerCase().includes('returning')) {
+          const updatedContext = {
+            ...merchantContext, 
+            "merchant.status": "existing"
+          }
+          setMerchantContext(updatedContext)
+          
+          const actions = evaluateRules(updatedContext)
+          executeActions(actions, updatedContext)
+        } else {
+          // Use legacy conversation manager for unhandled cases
+          const response = conversationManager.processUserInput(text)
+          addBotMessage(response.message, response.options)
+          
+          if (response.state) {
+            setCurrentState(response.state)
+          }
         }
       }
       
