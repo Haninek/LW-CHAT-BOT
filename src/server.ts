@@ -30,6 +30,9 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'Idempotency-Key'],
 }));
 
+// Trust proxy for rate limiting in proxy environments
+app.set('trust proxy', 1);
+
 // Logging middleware
 if (env.NODE_ENV !== 'test') {
   app.use(morgan('combined'));
