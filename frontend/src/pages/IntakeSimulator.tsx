@@ -74,11 +74,17 @@ const IntakeSimulator: React.FC = () => {
         }
         setCurrentMerchant(newMerchant)
         
+        const welcomeMessage = renderTemplateById('intake_welcome', newMerchant, persona, templates)
         addChatMessage({
           type: 'bot', 
-          content: 'Welcome! I\'ll help you get started. This will just take a few minutes.',
+          content: welcomeMessage,
           timestamp: new Date()
         })
+        
+        // Start conversation flow
+        setTimeout(() => {
+          autoProgressConversation()
+        }, 1500)
       }
     } catch (error) {
       console.error('Error setting up merchant:', error)
@@ -125,11 +131,18 @@ const IntakeSimulator: React.FC = () => {
           content: message,
           timestamp: new Date()
         })
+        
+        // After message, check if we should ask for more fields automatically
+        setTimeout(() => {
+          autoProgressConversation()
+        }, 1000)
         break
 
       case 'ask':
         const fieldsToAsk = action.fields.slice(0, 2) // Max 2 at a time
-        const askMessage = `I need the following information: ${fieldsToAsk.map(f => fieldRegistry[f]?.label).join(', ')}`
+        const askMessage = renderTemplateById('ask_fields', currentMerchant, persona, templates)
+          .replace('{fields}', fieldsToAsk.map(f => fieldRegistry[f]?.label).join(' and '))
+        
         addChatMessage({
           type: 'bot',
           content: askMessage,
@@ -139,9 +152,13 @@ const IntakeSimulator: React.FC = () => {
 
       case 'confirm':
         const fieldsToConfirm = action.fields.slice(0, 2) // Max 2 at a time
-        const confirmMessage = `Please confirm: ${fieldsToConfirm.map(f => 
+        const confirmData = fieldsToConfirm.map(f => 
           `${fieldRegistry[f]?.label}: ${currentMerchant.fields[f]?.value || 'Not provided'}`
-        ).join(', ')}`
+        ).join(', ')
+        
+        const confirmMessage = renderTemplateById('confirm_fields', currentMerchant, persona, templates)
+          .replace('{fields}', confirmData)
+        
         addChatMessage({
           type: 'bot',
           content: confirmMessage,
@@ -155,27 +172,84 @@ const IntakeSimulator: React.FC = () => {
     }
   }
 
+  // Auto-progress conversation based on resolver
+  const autoProgressConversation = () => {
+    if (!currentMerchant) return
+
+    const { toAsk, toConfirm } = askOnlyWhatsMissing(currentMerchant)
+    
+    if (toAsk.length > 0) {
+      const fieldsToAsk = toAsk.slice(0, 2)
+      const askMessage = renderTemplateById('ask_fields', currentMerchant, persona, templates)
+        .replace('{fields}', fieldsToAsk.map(f => fieldRegistry[f]?.label).join(' and '))
+      
+      addChatMessage({
+        type: 'bot',
+        content: askMessage,
+        timestamp: new Date()
+      })
+    } else if (toConfirm.length > 0) {
+      const fieldsToConfirm = toConfirm.slice(0, 2)
+      const confirmData = fieldsToConfirm.map(f => 
+        `${fieldRegistry[f]?.label}: ${currentMerchant.fields[f]?.value || 'Not provided'}`
+      ).join(', ')
+      
+      const confirmMessage = renderTemplateById('confirm_fields', currentMerchant, persona, templates)
+        .replace('{fields}', confirmData)
+      
+      addChatMessage({
+        type: 'bot',
+        content: confirmMessage,
+        timestamp: new Date()
+      })
+    } else {
+      // All done!
+      const completeMessage = renderTemplateById('intake_complete', currentMerchant, persona, templates)
+      addChatMessage({
+        type: 'bot',
+        content: completeMessage,
+        timestamp: new Date()
+      })
+    }
+  }
+
   const handleFieldUpdate = (fieldId: FieldId, value: string) => {
     updateMerchantField(fieldId, value)
     
+    // Show user input in chat
     addChatMessage({
       type: 'user',
       content: `${fieldRegistry[fieldId]?.label}: ${value}`,
       timestamp: new Date()
     })
 
-    // Check if we should ask for more fields
-    if (currentMerchant) {
-      const { toAsk, toConfirm } = askOnlyWhatsMissing(currentMerchant)
-      
-      if (toAsk.length === 0 && toConfirm.length === 0) {
-        addChatMessage({
-          type: 'bot',
-          content: '✅ Perfect! I have all the information I need.',
-          timestamp: new Date()
-        })
-      }
+    // Auto-progress conversation after a brief delay
+    setTimeout(() => {
+      autoProgressConversation()
+    }, 500)
+  }
+
+  const handleConfirmField = (fieldId: FieldId, confirmed: boolean) => {
+    if (confirmed) {
+      addChatMessage({
+        type: 'user',
+        content: `✓ Confirmed ${fieldRegistry[fieldId]?.label}`,
+        timestamp: new Date()
+      })
+    } else {
+      // Clear the field and ask for it again
+      updateMerchantField(fieldId, '')
+      addChatMessage({
+        type: 'user',
+        content: `Please update ${fieldRegistry[fieldId]?.label}`,
+        timestamp: new Date()
+      })
     }
+    
+    // Auto-progress conversation
+    setTimeout(() => {
+      autoProgressConversation()
+    }, 500)
   }
 
   const getCurrentFieldsToCollect = () => {
@@ -398,12 +472,15 @@ const IntakeSimulator: React.FC = () => {
                             </div>
                             <div className="flex gap-2">
                               <button
-                                onClick={() => handleFieldUpdate(fieldId, currentMerchant.fields[fieldId]?.value || '')}
+                                onClick={() => handleConfirmField(fieldId, true)}
                                 className="px-3 py-1 bg-green-500 text-white text-xs rounded hover:bg-green-600"
                               >
                                 ✓ Confirm
                               </button>
-                              <button className="px-3 py-1 bg-gray-300 text-gray-700 text-xs rounded hover:bg-gray-400">
+                              <button 
+                                onClick={() => handleConfirmField(fieldId, false)}
+                                className="px-3 py-1 bg-gray-300 text-gray-700 text-xs rounded hover:bg-gray-400"
+                              >
                                 Change
                               </button>
                             </div>
