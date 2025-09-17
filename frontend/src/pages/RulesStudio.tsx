@@ -138,6 +138,10 @@ const RulesStudio: React.FC = () => {
   const [conditionField, setConditionField] = useState('')
   const [conditionValue, setConditionValue] = useState('')
   const [selectedFields, setSelectedFields] = useState<FieldId[]>([])
+  const [conditionGroups, setConditionGroups] = useState<any[]>([])
+  const [actionType, setActionType] = useState<'message' | 'ask' | 'confirm' | 'setPersona'>('message')
+  const [selectedTemplate, setSelectedTemplate] = useState('')
+  const [actionFields, setActionFields] = useState<FieldId[]>([])
 
   // Drag & drop sensors
   const sensors = useSensors(
@@ -214,6 +218,21 @@ const RulesStudio: React.FC = () => {
   }
 
   const buildCondition = (): Condition => {
+    if (conditionType === 'and' || conditionType === 'or') {
+      // Build compound condition from groups
+      if (conditionGroups.length > 0) {
+        return {
+          kind: conditionType,
+          conditions: conditionGroups.map(group => ({
+            kind: group.type,
+            field: group.field,
+            value: group.value,
+            fields: group.fields
+          }))
+        }
+      }
+    }
+    
     switch (conditionType) {
       case 'equals':
         return { kind: 'equals', field: conditionField, value: conditionValue }
@@ -229,7 +248,49 @@ const RulesStudio: React.FC = () => {
   }
 
   const buildActions = (): Action[] => {
-    return [{ type: 'message', templateId: 'intake_welcome' }]
+    const actions: Action[] = []
+    
+    switch (actionType) {
+      case 'message':
+        if (selectedTemplate) {
+          actions.push({ type: 'message', templateId: selectedTemplate })
+        }
+        break
+      case 'ask':
+        if (actionFields.length > 0) {
+          actions.push({ type: 'ask', fields: actionFields })
+        }
+        break
+      case 'confirm':
+        if (actionFields.length > 0) {
+          actions.push({ type: 'confirm', fields: actionFields })
+        }
+        break
+      case 'setPersona':
+        actions.push({ type: 'setPersona', persona: 'friendly' })
+        break
+    }
+    
+    return actions.length > 0 ? actions : [{ type: 'message', templateId: 'intake_welcome' }]
+  }
+
+  const addConditionGroup = () => {
+    setConditionGroups([...conditionGroups, {
+      type: 'equals',
+      field: '',
+      value: '',
+      fields: []
+    }])
+  }
+
+  const removeConditionGroup = (index: number) => {
+    setConditionGroups(conditionGroups.filter((_, i) => i !== index))
+  }
+
+  const updateConditionGroup = (index: number, updates: any) => {
+    const updated = [...conditionGroups]
+    updated[index] = { ...updated[index], ...updates }
+    setConditionGroups(updated)
   }
 
   const handleSyncToServer = async () => {
@@ -448,6 +509,8 @@ const RulesStudio: React.FC = () => {
                                 <option value="missingAny">Any Field Missing</option>
                                 <option value="expiredAny">Any Field Expired</option>
                                 <option value="notExpiredAll">All Fields Not Expired</option>
+                                <option value="and">AND Group</option>
+                                <option value="or">OR Group</option>
                               </select>
 
                               {conditionType === 'equals' && (
@@ -495,16 +558,136 @@ const RulesStudio: React.FC = () => {
                                   </div>
                                 </div>
                               )}
+
+                              {(conditionType === 'and' || conditionType === 'or') && (
+                                <div>
+                                  <div className="flex items-center justify-between mb-2">
+                                    <label className="block text-sm font-medium text-gray-700">
+                                      Condition Groups ({conditionType.toUpperCase()})
+                                    </label>
+                                    <button
+                                      type="button"
+                                      onClick={addConditionGroup}
+                                      className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded hover:bg-blue-200"
+                                    >
+                                      Add Condition
+                                    </button>
+                                  </div>
+                                  
+                                  <div className="space-y-3 max-h-40 overflow-y-auto">
+                                    {conditionGroups.map((group, index) => (
+                                      <div key={index} className="p-3 border border-gray-200 rounded-md bg-gray-50">
+                                        <div className="flex items-center justify-between mb-2">
+                                          <span className="text-sm font-medium">Condition {index + 1}</span>
+                                          <button
+                                            type="button"
+                                            onClick={() => removeConditionGroup(index)}
+                                            className="text-red-600 hover:text-red-800 text-xs"
+                                          >
+                                            Remove
+                                          </button>
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-2 text-sm">
+                                          <select
+                                            value={group.type}
+                                            onChange={(e) => updateConditionGroup(index, { type: e.target.value })}
+                                            className="px-2 py-1 border border-gray-300 rounded text-xs"
+                                          >
+                                            <option value="equals">Equals</option>
+                                            <option value="missingAny">Missing</option>
+                                            <option value="expiredAny">Expired</option>
+                                          </select>
+                                          <input
+                                            type="text"
+                                            placeholder="Field"
+                                            value={group.field}
+                                            onChange={(e) => updateConditionGroup(index, { field: e.target.value })}
+                                            className="px-2 py-1 border border-gray-300 rounded text-xs"
+                                          />
+                                          <input
+                                            type="text"
+                                            placeholder="Value"
+                                            value={group.value}
+                                            onChange={(e) => updateConditionGroup(index, { value: e.target.value })}
+                                            className="px-2 py-1 border border-gray-300 rounded text-xs"
+                                          />
+                                        </div>
+                                      </div>
+                                    ))}
+                                    {conditionGroups.length === 0 && (
+                                      <div className="text-center py-4 text-gray-500 text-sm">
+                                        No conditions added yet
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </div>
 
-                          {/* Actions */}
+                          {/* Enhanced Actions Builder */}
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">
                               Then (Actions)
                             </label>
-                            <div className="text-sm text-gray-500">
-                              Action builder coming soon. Use JSON editor for complex actions.
+                            <div className="space-y-3">
+                              <select
+                                value={actionType}
+                                onChange={(e) => setActionType(e.target.value as any)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                              >
+                                <option value="message">Send Message</option>
+                                <option value="ask">Ask for Fields</option>
+                                <option value="confirm">Confirm Fields</option>
+                                <option value="setPersona">Set Persona</option>
+                              </select>
+
+                              {actionType === 'message' && (
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Template
+                                  </label>
+                                  <select
+                                    value={selectedTemplate}
+                                    onChange={(e) => setSelectedTemplate(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                                  >
+                                    <option value="">Select template...</option>
+                                    {templates.map(template => (
+                                      <option key={template.id} value={template.id}>
+                                        {template.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              )}
+
+                              {(actionType === 'ask' || actionType === 'confirm') && (
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Fields
+                                  </label>
+                                  <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto border border-gray-200 rounded p-2">
+                                    {Object.keys(fieldRegistry).map(fieldId => (
+                                      <label key={fieldId} className="flex items-center text-sm">
+                                        <input
+                                          type="checkbox"
+                                          checked={actionFields.includes(fieldId as FieldId)}
+                                          onChange={(e) => {
+                                            if (e.target.checked) {
+                                              setActionFields([...actionFields, fieldId as FieldId])
+                                            } else {
+                                              setActionFields(actionFields.filter(f => f !== fieldId))
+                                            }
+                                          }}
+                                          className="mr-2"
+                                        />
+                                        {fieldRegistry[fieldId as FieldId]?.label}
+                                      </label>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
