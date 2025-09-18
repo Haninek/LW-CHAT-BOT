@@ -20,6 +20,7 @@ from routes import (
     connectors, 
     merchants,
     deals,
+    documents,
     intake,
     ingest,
     bank,
@@ -87,6 +88,7 @@ def create_app() -> FastAPI:
     app.include_router(connectors.router, prefix="/api/connectors", tags=["connectors"])
     app.include_router(merchants.router, prefix="/api/merchants", tags=["merchants"])
     app.include_router(deals.router, tags=["deals"])
+    app.include_router(documents.router, tags=["documents"])
     app.include_router(intake.router, prefix="/api/intake", tags=["intake"])
     app.include_router(ingest.router, prefix="/api/ingest", tags=["ingest"])
     app.include_router(bank.router, prefix="/api/bank", tags=["documents"])
