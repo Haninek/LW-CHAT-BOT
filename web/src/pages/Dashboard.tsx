@@ -236,7 +236,7 @@ export function Dashboard() {
       method: 'GET',
       refreshInterval: 30,
       displayType: 'stat',
-      color: 'info',
+      color: 'primary',
       valuePath: 'length',
       formatter: 'number'
     }
@@ -441,3 +441,5 @@ export function Dashboard() {
     </div>
   )
 }
+
+export default Dashboard
