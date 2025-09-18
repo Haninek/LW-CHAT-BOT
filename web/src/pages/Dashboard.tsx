@@ -11,6 +11,8 @@ import {
   Zap
 } from 'lucide-react'
 import { apiClient } from '../lib/api'
+import { ApiWidget } from '../components/ApiWidget'
+import { ApiWidgetConfig } from '../types/widget'
 // import { useAppStore } from '../state/useAppStore'
 
 interface HealthData {
@@ -158,6 +160,46 @@ export default function Dashboard() {
 
   const health = getHealthStatus()
   const readiness = getReadinessCount()
+
+  // Example REST API widget configurations with proper data extraction
+  const exampleApiWidgets: ApiWidgetConfig[] = [
+    {
+      id: 'crypto-price',
+      title: 'Bitcoin Price',
+      endpoint: 'https://api.coindesk.com/v1/bpi/currentprice.json',
+      method: 'GET',
+      refreshInterval: 30,
+      displayType: 'stat',
+      color: 'warning',
+      valuePath: 'bpi.USD.rate_float',
+      subtitlePath: 'bpi.USD.description',
+      formatter: 'currency'
+    },
+    {
+      id: 'market-data',
+      title: 'BTC Price (CoinCap)',
+      endpoint: 'https://api.coincap.io/v2/assets/bitcoin',
+      method: 'GET',
+      refreshInterval: 60,
+      displayType: 'stat',
+      color: 'primary',
+      valuePath: 'data.priceUsd',
+      subtitlePath: 'data.name',
+      formatter: 'currency'
+    },
+    {
+      id: 'github-stars',
+      title: 'VS Code Stars',
+      endpoint: 'https://api.github.com/repos/microsoft/vscode',
+      method: 'GET',
+      refreshInterval: 300,
+      displayType: 'stat',
+      color: 'success',
+      valuePath: 'stargazers_count',
+      subtitlePath: 'description',
+      formatter: 'number'
+    }
+  ]
 
   return (
     <div className="space-y-6">
@@ -346,6 +388,58 @@ export default function Dashboard() {
             </motion.div>
           ))}
         </div>
+      </motion.div>
+
+      {/* External API Widgets Section */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.5 }}
+        className="space-y-6"
+      >
+        <h2 className="text-xl font-semibold text-slate-900">External API Integrations</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {exampleApiWidgets.map((config) => (
+            <ApiWidget
+              key={config.id}
+              config={config}
+              className="h-full"
+            />
+          ))}
+        </div>
+        
+        {/* API Integration Instructions */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.6 }}
+          className="card border-l-4 border-l-primary-500 bg-primary-50"
+        >
+          <h3 className="text-lg font-semibold text-slate-900 mb-2">📡 REST API Widget Integration</h3>
+          <p className="text-sm text-slate-700 mb-3">
+            Easily integrate external REST APIs as dashboard widgets. Configure endpoints, data extraction paths, and refresh intervals.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            <div>
+              <h4 className="font-medium text-slate-800 mb-1">Configuration Options:</h4>
+              <ul className="text-slate-600 space-y-1">
+                <li>• Custom API endpoints with path extraction</li>
+                <li>• Configurable refresh intervals</li>
+                <li>• HTTP headers & request customization</li>
+                <li>• Built-in data formatters</li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="font-medium text-slate-800 mb-1">Supported Features:</h4>
+              <ul className="text-slate-600 space-y-1">
+                <li>• Automatic error handling</li>
+                <li>• Loading states & indicators</li>
+                <li>• Real-time data updates</li>
+                <li>• Responsive design</li>
+              </ul>
+            </div>
+          </div>
+        </motion.div>
       </motion.div>
     </div>
   )
