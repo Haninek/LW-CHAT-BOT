@@ -281,7 +281,7 @@ export function Dashboard() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
         {/* System Health Overview */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -290,7 +290,7 @@ export function Dashboard() {
           className="mb-8"
         >
           <h2 className="text-xl font-semibold text-slate-900 mb-4">System Health</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
             <StatCard
               title="Service Status"
               value={health.status}
@@ -318,7 +318,7 @@ export function Dashboard() {
           className="mb-8"
         >
           <h2 className="text-xl font-semibold text-slate-900 mb-4">Analytics Overview</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6">
             {mockStats.map((stat, index) => (
               <StatCard key={index} {...stat} />
             ))}
@@ -333,7 +333,7 @@ export function Dashboard() {
           className="mb-8"
         >
           <h2 className="text-xl font-semibold text-slate-900 mb-4">REST API Widgets</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-6">
             {exampleApiWidgets.map((widget) => (
               <ApiWidget key={widget.id} config={widget} />
             ))}
