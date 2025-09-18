@@ -1,0 +1,177 @@
+What’s already solid ✅
+
+FastAPI app wired with routers: /api/merchants, /api/deals, /api/documents, /api/bank, /api/plaid, /api/offers, /api/underwriting, /api/sign, /api/events, /api/ingest, /api/connectors (tenanted).
+
+Schema present: tenants, connectors (tenant-scoped, encrypted), merchants, deals, documents (stores PDF bytes), metrics_snapshots, field_state, events.
+
+Docs → metrics pipeline (mock): /api/documents/bank/upload saves exactly 3 PDFs and emits a snapshot (currently sample metrics).
+
+Underwriting guardrails service: risk checks + CA rules scaffold in server/services/underwriting.py.
+
+Plaid endpoints (stub), e-signature endpoints (DocuSign/Dropbox Sign stubs), background-check scaffold, ingest + mapping models for CRM migration.
+
+Frontend scaffolding: Chat + basic Campaigns + Rules/Connectors pages; Chad persona seeds.
+
+Gaps that still block “automate the client workflow” 🔴
+
+Returning-merchant flow is incomplete
+
+GET /api/merchants/resolve currently matches by token/phone/email only and doesn’t return an open deal (no EIN/fuzzy name/state logic, no match score).
+
+POST /api/deals/start always creates a new deal (doesn’t reuse an existing open|offer|accepted one).
+
+Fix: extend resolve to try EIN → phone+email → fuzzy legal_name(+state); return {status, merchant, open_deal, match: {score}}. In deals.start, reuse last open deal or create new if none.
+
+“Ask-only-what’s-missing” not implemented end-to-end
+
+/api/intake/answer writes one field but doesn’t compute {missing, confirm} sets.
+
+Fix: keep a REQUIRED list + expiry policy; after each upsert, compute and return { missing:[], confirm:[] } so the bot only asks gaps.
+
+Offers not tied to deals
+
+models/offer.py uses merchant_id (not deal_id), so offers aren’t anchored to the correct application.
+
+Fix: add deal_id FK; deprecate merchant_id. (Migration: add column, backfill from last snapshot’s deal, then switch writer/reader.)
+
+Events aren’t deal-aware or tenant-aware
+
+events table has only merchant_id.
+
+Fix: add tenant_id and deal_id to Event and include them when writing business events (upload, metrics.ready, offers.generated, sign.sent, etc.).
+
+SMS at scale is missing on the Python side
+
+There’s a TypeScript src/routes/sms.ts, but no FastAPI /api/sms/cherry endpoints in server/.
+
+Fix: port send + webhook into server/routes/sms.py (append “Reply STOP to opt out.” if missing, handle STOP/HELP, write Consent + Event rows).
+
+Consent model not present
+
+No table for opt-in/opt-out state by channel.
+
+Fix: add consents(merchant_id, channel, status, timestamp) and set on webhook; check before sending.
+
+Idempotency & throughput
+
+No idempotency middleware; high-volume sends/uploads may double-post on retries. No queue for bulk SMS/parse jobs.
+
+Fix: add an Idempotency-Key guard (in-memory now, Redis later). Queue: stub a background task dispatcher (Celery/RQ/Arq or simple asyncio), then swap to Redis when you scale.
+
+Offer guardrails not enforced in route
+
+Guardrail service exists, but /api/offers should block or route to manual review based on metrics_snapshot + your thresholds (NSF, neg days, positions, CA 4-month rule).
+
+Fix: call guardrails before generateOffers and return decision flags.
+
+Resolve → Reuse open deal in UI
+
+Frontend Chat calls don’t yet use {open_deal} from resolve, so new deals are created each time.
+
+Fix: after resolve, call /api/deals/start only if no open deal; pass deal_id through docs → metrics → offers → background → sign.
+
+Background checks flags only
+
+The CLEAR/courts/SOS endpoints are stubs.
+
+Fix: keep “flags-only” pattern (OK/REVIEW/DECLINE + reasons) and attach results to the deal. Raw PII stays server-side.
+
+Minimal patches (keep it small & targeted)
+
+A) merchants.resolve (upgrade matching + return open deal) — server/routes/merchants.py
+
+@router.get("/resolve")
+async def resolve_merchant(
+    phone: Optional[str] = Query(None),
+    email: Optional[str] = Query(None),
+    ein: Optional[str] = Query(None),
+    legal_name: Optional[str] = Query(None),
+    state: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    m = None; score = 0.0
+    if ein:
+        m = db.query(Merchant).filter(Merchant.ein == ein).first(); score = 0.99 if m else 0
+    if not m and (phone or email):
+        q = db.query(Merchant)
+        if phone: q = q.filter(Merchant.phone == phone)
+        if email: q = q.filter(Merchant.email == email)
+        m = q.first(); score = 0.95 if m else 0
+    if not m and legal_name:
+        # naive fuzzy (replace with proper distance)
+        name = (legal_name or "").lower()
+        cands = db.query(Merchant).all()
+        best = max(cands, key=lambda x: (1 - abs(len(x.legal_name.lower())-len(name))/max(len(name),1)) if x.legal_name else 0, default=None)
+        if best: m, score = best, 0.8
+    if not m: return {"found": False}
+
+    # return open/active deal if any
+    open_deal = db.query(Deal).filter(Deal.merchant_id == m.id, Deal.status.in_(["open","offer","accepted"])).order_by(Deal.created_at.desc()).first()
+    return {"found": True, "merchant": {"id": m.id, "legal_name": m.legal_name, "phone": m.phone, "email": m.email}, "open_deal": {"id": open_deal.id, "status": open_deal.status} if open_deal else None, "match": {"score": round(score,2)}}
+
+
+B) deals.start (reuse open) — server/routes/deals.py
+
+deal = db.query(Deal).filter(Deal.merchant_id==request.merchant_id, Deal.status.in_(["open","offer","accepted"])).order_by(Deal.created_at.desc()).first()
+if deal:
+    return {"deal_id": deal.id, "merchant_id": request.merchant_id, "status": deal.status}
+# else create
+
+
+C) intake.answer (compute missing/confirm) — server/routes/intake.py
+
+REQUIRED = ["business.legal_name","business.address","business.city","business.state","business.zip","contact.phone","contact.email","business.ein","owner.dob","owner.ssn_last4"]
+EXPIRES = {"contact.phone":365,"contact.email":365,"business.address":365}
+
+# after upsert:
+all_fs = db.query(FieldState).filter(FieldState.merchant_id==request.merchant_id).all()
+by_id = {f.field_id:f for f in all_fs}
+missing = [f for f in REQUIRED if f not in by_id or not (by_id[f].value or "").strip()]
+from datetime import datetime, timedelta
+confirm=[]
+for fid, days in EXPIRES.items():
+    st = by_id.get(fid)
+    if st and st.last_verified_at and (datetime.utcnow()-st.last_verified_at).days>days:
+        confirm.append(fid)
+return {"status":"saved","field_id":request.field_id,"missing":missing,"confirm":confirm}
+
+
+D) offers → tie to deal & enforce guardrails
+
+Add deal_id to models/offer.py, backfill, and in /api/offers insert with deal_id.
+
+Before generating, run guardrails with the latest MetricsSnapshot and return {decision, reasons} if not approved.
+
+E) add Consent model + SMS endpoints (Python)
+
+New table: consents(id, merchant_id, channel, status, timestamp).
+
+New routes: server/routes/sms.py
+
+POST /api/sms/cherry/send (append STOP line if missing; skip numbers with opt_out).
+
+POST /api/sms/cherry/webhook (set opt_out on STOP; create Event).
+
+Add to main.py: app.include_router(sms.router, prefix="/api/sms/cherry", tags=["sms"]).
+
+F) idempotency (quick)
+Add a lightweight in-memory idempotency middleware (like we sketched earlier) and apply it to write routes that can be retried (/deals/start, /intake/answer, /documents/bank/upload, /offers).
+
+G) events
+Update every write route to also write an Event(tenant_id, merchant_id, deal_id, type, data_json) so you have a full timeline.
+
+Prioritized PR plan (fastest path)
+
+A+B+C (resolve/reuse + ask-only + intake feedback)
+
+D (offers on deal_id + guardrails in route)
+
+G (events carry tenant_id + deal_id)
+
+E (Cherry SMS endpoints + Consent)
+
+F (idempotency)
+
+Swap the frontend Chat to: resolve → (reuse open) or start → intake.answer loop → upload → metrics → offers → background → sign.
+
+If you want, I can produce the exact diffs for each file (ready to paste) following your code style—just say the word and tell me whether you’d rather keep offers backward-compatible (temporary dual merchant_id + deal_id) or migrate cleanly in one shot.

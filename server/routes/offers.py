@@ -10,6 +10,8 @@ import math
 
 from core.database import get_db
 from models.offer import Offer
+from models.deal import Deal
+from models.metrics_snapshot import MetricsSnapshot
 from services.underwriting import underwriting_guardrails, UnderwritingDecision
 
 router = APIRouter()
@@ -22,11 +24,11 @@ class OfferOverrides(BaseModel):
 
 
 class GenerateOffersRequest(BaseModel):
-    avg_monthly_revenue: float
-    avg_daily_balance_3m: float
-    total_nsf_3m: int
-    total_days_negative_3m: int
-    merchant_id: Optional[str] = None
+    deal_id: str
+    avg_monthly_revenue: Optional[float] = None
+    avg_daily_balance_3m: Optional[float] = None
+    total_nsf_3m: Optional[int] = None
+    total_days_negative_3m: Optional[int] = None
     overrides: Optional[OfferOverrides] = None
 
 
@@ -35,15 +37,43 @@ async def generate_offers(
     request: GenerateOffersRequest,
     db: Session = Depends(get_db)
 ):
-    """Generate funding offers based on metrics and overrides with underwriting guardrails."""
+    """Generate funding offers for a deal based on latest metrics with underwriting guardrails."""
     
-    # First, run underwriting guardrails validation
-    metrics = {
-        "avg_monthly_revenue": request.avg_monthly_revenue,
-        "avg_daily_balance_3m": request.avg_daily_balance_3m,
-        "total_nsf_3m": request.total_nsf_3m,
-        "total_days_negative_3m": request.total_days_negative_3m
-    }
+    # Verify deal exists
+    deal = db.query(Deal).filter(Deal.id == request.deal_id).first()
+    if not deal:
+        return {"error": "Deal not found", "deal_id": request.deal_id}
+    
+    # Get latest metrics snapshot for the deal or use provided values
+    if any([request.avg_monthly_revenue, request.avg_daily_balance_3m, 
+            request.total_nsf_3m, request.total_days_negative_3m]):
+        # Use provided metrics
+        metrics = {
+            "avg_monthly_revenue": request.avg_monthly_revenue,
+            "avg_daily_balance_3m": request.avg_daily_balance_3m,
+            "total_nsf_3m": request.total_nsf_3m,
+            "total_days_negative_3m": request.total_days_negative_3m
+        }
+    else:
+        # Get latest metrics snapshot for this deal
+        latest_snapshot = db.query(MetricsSnapshot).filter(
+            MetricsSnapshot.deal_id == request.deal_id
+        ).order_by(MetricsSnapshot.created_at.desc()).first()
+        
+        if not latest_snapshot:
+            return {
+                "error": "No metrics available for this deal. Upload bank statements and recompute metrics first.",
+                "deal_id": request.deal_id
+            }
+        
+        metrics = {
+            "avg_monthly_revenue": latest_snapshot.avg_monthly_revenue,
+            "avg_daily_balance_3m": latest_snapshot.avg_daily_balance_3m,
+            "total_nsf_3m": latest_snapshot.total_nsf_3m,
+            "total_days_negative_3m": latest_snapshot.total_days_negative_3m
+        }
+    
+    # Run underwriting guardrails validation
     
     underwriting_result = underwriting_guardrails.evaluate_metrics(metrics, "CA")
     
@@ -166,17 +196,17 @@ async def generate_offers(
         
         offers.append(offer)
     
-    # Save offers to database if merchant_id provided
-    if request.merchant_id:
-        for offer_data in offers:
-            offer_record = Offer(
-                id=offer_data["id"],
-                merchant_id=request.merchant_id,
-                payload_json=json.dumps(offer_data),
-                status="pending"
-            )
-            db.add(offer_record)
-        db.commit()
+    # Save offers to database tied to deal
+    for offer_data in offers:
+        offer_record = Offer(
+            id=offer_data["id"],
+            deal_id=request.deal_id,
+            merchant_id=deal.merchant_id,  # Keep for compatibility
+            payload_json=json.dumps(offer_data),
+            status="pending"
+        )
+        db.add(offer_record)
+    db.commit()
     
     return {
         "offers": offers,

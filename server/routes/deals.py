@@ -29,19 +29,36 @@ async def start_deal(
     db: Session = Depends(get_db),
     _: bool = Depends(verify_partner_key)
 ):
-    """Start a new deal for a merchant."""
+    """Start a deal for a merchant - reuse existing open deal if available."""
     
     # Verify merchant exists
     merchant = db.query(Merchant).filter(Merchant.id == request.merchant_id).first()
     if not merchant:
         raise HTTPException(status_code=404, detail="Merchant not found")
     
-    # Create new deal
+    # Check for existing open/active deal
+    existing_deal = db.query(Deal).filter(
+        Deal.merchant_id == request.merchant_id,
+        Deal.status.in_(["open", "offer", "accepted"])
+    ).order_by(Deal.created_at.desc()).first()
+    
+    if existing_deal:
+        # Return existing deal instead of creating new one
+        return {
+            "deal_id": existing_deal.id,
+            "merchant_id": existing_deal.merchant_id,
+            "status": existing_deal.status,
+            "funding_amount": existing_deal.funding_amount,
+            "created_at": existing_deal.created_at.isoformat(),
+            "reused": True
+        }
+    
+    # Create new deal only if no open deal exists
     deal_id = str(uuid.uuid4())
     deal = Deal(
         id=deal_id,
         merchant_id=request.merchant_id,
-        status="active",
+        status="open",  # Changed from "active" to "open" for consistency
         funding_amount=request.funding_amount,
         created_at=datetime.utcnow()
     )
@@ -55,7 +72,8 @@ async def start_deal(
         "merchant_id": deal.merchant_id,
         "status": deal.status,
         "funding_amount": deal.funding_amount,
-        "created_at": deal.created_at.isoformat()
+        "created_at": deal.created_at.isoformat(),
+        "reused": False
     }
 
 

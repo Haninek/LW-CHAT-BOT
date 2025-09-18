@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timedelta
 import uuid
 
 from core.database import get_db
@@ -52,7 +52,21 @@ async def answer_field(
     db: Session = Depends(get_db),
     _: bool = Depends(verify_partner_key)
 ):
-    """Answer a field during intake (updates FieldState)."""
+    """Answer a field during intake and compute missing/confirm fields."""
+    
+    # Required fields for complete application
+    REQUIRED = [
+        "business.legal_name", "business.address", "business.city", 
+        "business.state", "business.zip", "contact.phone", "contact.email", 
+        "business.ein", "owner.dob", "owner.ssn_last4"
+    ]
+    
+    # Fields that need periodic reconfirmation (field_id: days)
+    EXPIRES = {
+        "contact.phone": 365,
+        "contact.email": 365, 
+        "business.address": 365
+    }
     
     # Find existing field state or create new one
     field_state = db.query(FieldState).filter(
@@ -78,4 +92,28 @@ async def answer_field(
     
     db.commit()
     
-    return {"status": "saved", "field_id": request.field_id}
+    # Compute missing and confirm sets after upsert
+    all_fs = db.query(FieldState).filter(FieldState.merchant_id == request.merchant_id).all()
+    by_id = {f.field_id: f for f in all_fs}
+    
+    # Find missing required fields (empty or missing)
+    missing = [
+        f for f in REQUIRED 
+        if f not in by_id or not (by_id[f].value or "").strip()
+    ]
+    
+    # Find fields that need reconfirmation due to expiry
+    confirm = []
+    for fid, days in EXPIRES.items():
+        st = by_id.get(fid)
+        if st and st.last_verified_at:
+            days_since_verified = (datetime.utcnow() - st.last_verified_at).days
+            if days_since_verified > days:
+                confirm.append(fid)
+    
+    return {
+        "status": "saved",
+        "field_id": request.field_id,
+        "missing": missing,
+        "confirm": confirm
+    }

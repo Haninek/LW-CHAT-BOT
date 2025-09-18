@@ -21,8 +21,8 @@ class Deal(Base):
     merchant = relationship("Merchant", back_populates="deals")
     documents = relationship("Document", back_populates="deal", cascade="all, delete-orphan")
     metrics_snapshots = relationship("MetricsSnapshot", back_populates="deal", cascade="all, delete-orphan")
+    offers = relationship("Offer", back_populates="deal", cascade="all, delete-orphan")
     # TODO: Update these models to use deal_id instead of merchant_id
-    # offers = relationship("Offer", back_populates="deal", cascade="all, delete-orphan")
     # agreements = relationship("Agreement", back_populates="deal", cascade="all, delete-orphan")
     # background_jobs = relationship("BackgroundJob", back_populates="deal", cascade="all, delete-orphan")
     # events = relationship("Event", back_populates="deal", cascade="all, delete-orphan")
