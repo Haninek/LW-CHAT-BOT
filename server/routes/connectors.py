@@ -8,16 +8,19 @@ from pydantic import BaseModel
 from core.database import get_db
 from core.security import encrypt_data, decrypt_data, mask_secrets, verify_partner_key
 from models.connector import Connector
+from models.tenant import Tenant
 
 router = APIRouter()
 
 
 class ConnectorConfig(BaseModel):
+    tenant_id: str
     name: str
     config: Dict[str, Any]
 
 
 class ConnectorValidation(BaseModel):
+    tenant_id: str
     name: str
     live: bool = False
 
@@ -28,47 +31,88 @@ async def save_connector(
     db: Session = Depends(get_db),
     _: bool = Depends(verify_partner_key)
 ):
-    """Save or update connector configuration (encrypted)."""
+    """Save or update tenant-specific connector configuration (encrypted)."""
+    
+    # Validate tenant exists
+    tenant = db.query(Tenant).filter(Tenant.id == connector_config.tenant_id).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
     
     # Encrypt the configuration
     encrypted_config = encrypt_data(connector_config.config)
     
     # Save to database
-    existing = db.query(Connector).filter(Connector.name == connector_config.name).first()
+    existing = db.query(Connector).filter(
+        Connector.tenant_id == connector_config.tenant_id,
+        Connector.name == connector_config.name
+    ).first()
+    
     if existing:
         existing.encrypted_config = encrypted_config
         db.commit()
-        return {"status": "updated", "name": connector_config.name}
+        return {
+            "status": "updated", 
+            "tenant_id": connector_config.tenant_id,
+            "name": connector_config.name
+        }
     else:
         connector = Connector(
+            tenant_id=connector_config.tenant_id,
             name=connector_config.name,
             encrypted_config=encrypted_config
         )
         db.add(connector)
         db.commit()
-        return {"status": "created", "name": connector_config.name}
+        return {
+            "status": "created", 
+            "tenant_id": connector_config.tenant_id,
+            "name": connector_config.name
+        }
 
 
-@router.get("/")
-async def list_connectors(db: Session = Depends(get_db)):
-    """List all connectors with basic info."""
-    connectors = db.query(Connector).all()
+@router.get("/{tenant_id}")
+async def list_connectors(
+    tenant_id: str,
+    db: Session = Depends(get_db),
+    _: bool = Depends(verify_partner_key)
+):
+    """List all connectors for a specific tenant."""
+    
+    # Validate tenant exists
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    
+    connectors = db.query(Connector).filter(Connector.tenant_id == tenant_id).all()
     return [
         {
+            "tenant_id": c.tenant_id,
             "name": c.name,
+            "created_at": c.created_at.isoformat(),
             "updated_at": c.updated_at.isoformat()
         }
         for c in connectors
     ]
 
 
-@router.get("/{name}")
+@router.get("/{tenant_id}/{name}")
 async def get_connector(
+    tenant_id: str,
     name: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(verify_partner_key)
 ):
-    """Get connector configuration (always masked for security)."""
-    connector = db.query(Connector).filter(Connector.name == name).first()
+    """Get tenant-specific connector configuration (always masked for security)."""
+    
+    # Validate tenant exists
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    
+    connector = db.query(Connector).filter(
+        Connector.tenant_id == tenant_id,
+        Connector.name == name
+    ).first()
     if not connector:
         raise HTTPException(status_code=404, detail="Connector not found")
     
@@ -76,20 +120,38 @@ async def get_connector(
     config = mask_secrets(config)  # Always mask secrets
     
     return {
+        "tenant_id": connector.tenant_id,
         "name": connector.name,
         "config": config,
+        "created_at": connector.created_at.isoformat(),
         "updated_at": connector.updated_at.isoformat()
     }
 
 
 @router.post("/validate")
-async def validate_connector(validation: ConnectorValidation):
-    """Validate connector configuration."""
+async def validate_connector(
+    validation: ConnectorValidation,
+    db: Session = Depends(get_db),
+    _: bool = Depends(verify_partner_key)
+):
+    """Validate tenant-specific connector configuration."""
+    
+    # Validate tenant exists
+    tenant = db.query(Tenant).filter(Tenant.id == validation.tenant_id).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
     
     # TODO: Implement actual validation logic for each connector type
+    base_response = {
+        "tenant_id": validation.tenant_id,
+        "name": validation.name,
+        "status": "valid",
+        "checks": {"structure": True}
+    }
+    
     if validation.name == "plaid":
         return {
-            "status": "valid",
+            **base_response,
             "message": "TODO: Plaid validation in mock mode",
             "checks": {
                 "structure": True,
@@ -98,7 +160,7 @@ async def validate_connector(validation: ConnectorValidation):
         }
     elif validation.name == "docusign":
         return {
-            "status": "valid", 
+            **base_response,
             "message": "DocuSign configuration structure is valid",
             "checks": {
                 "structure": True,
@@ -107,7 +169,7 @@ async def validate_connector(validation: ConnectorValidation):
         }
     elif validation.name == "clear":
         return {
-            "status": "valid",
+            **base_response,
             "message": "CLEAR configuration structure is valid", 
             "checks": {
                 "structure": True,
@@ -116,7 +178,7 @@ async def validate_connector(validation: ConnectorValidation):
         }
     elif validation.name == "cherry_sms":
         return {
-            "status": "valid",
+            **base_response,
             "message": "Cherry SMS configuration structure is valid",
             "checks": {
                 "structure": True,
@@ -125,7 +187,7 @@ async def validate_connector(validation: ConnectorValidation):
         }
     elif validation.name == "dropbox_sign":
         return {
-            "status": "valid",
+            **base_response,
             "message": "Dropbox Sign configuration structure is valid",
             "checks": {
                 "structure": True,
