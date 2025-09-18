@@ -31,10 +31,11 @@ from routes import (
     sign,
     events,
     admin,
-    queue,
-    deals_read,
-    deals_actions
+    queue
 )
+
+# Import deals extensions separately  
+from routes import deals_read, deals_actions
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

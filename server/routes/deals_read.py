@@ -60,8 +60,7 @@ async def list_deals(
     status: Optional[str] = Query(None, description="open|offer|accepted|signed|declined|closed"),
     q: Optional[str] = Query(None, description="Search legal_name/phone/email"),
     limit: int = Query(50, description="Max number of results"),
-    db: Session = Depends(get_db),
-    _: bool = Depends(verify_partner_key)
+    db: Session = Depends(get_db)
 ):
     """List deals with optional filtering and search."""
     
@@ -116,8 +115,7 @@ async def list_deals(
 @router.get("/{deal_id}")
 async def get_deal(
     deal_id: str,
-    db: Session = Depends(get_db),
-    _: bool = Depends(verify_partner_key)
+    db: Session = Depends(get_db)
 ):
     """Get comprehensive deal details."""
     

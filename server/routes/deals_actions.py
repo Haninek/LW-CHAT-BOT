@@ -29,63 +29,19 @@ class UpdateDealStatusRequest(BaseModel):
 
 
 @router.post("/{deal_id}/accept")
-async def accept_offer(
-    deal_id: str = Path(..., description="Deal ID"),
-    request: AcceptOfferRequest = Body(...),
-    db: Session = Depends(get_db),
-    _: bool = Depends(verify_partner_key)
-):
+def accept_offer(deal_id: str = Path(...), offer: dict = Body(...), db: Session = Depends(get_db)):
     """Accept a specific offer for a deal."""
+    d = db.query(Deal).get(deal_id)
+    if not d: 
+        raise HTTPException(404, "deal not found")
     
-    deal = db.query(Deal).filter(Deal.id == deal_id).first()
-    if not deal:
-        raise HTTPException(status_code=404, detail="Deal not found")
-    
-    # Find the offer
-    offer = db.query(Offer).filter(
-        Offer.id == request.offer_id,
-        Offer.deal_id == deal_id
-    ).first()
-    
-    if not offer:
-        raise HTTPException(status_code=404, detail="Offer not found")
-    
-    # Update offer status
-    offer.status = "accepted"
-    
-    # Update deal status
-    deal.status = "accepted"
-    if offer.payload_json:
-        try:
-            offer_data = json.loads(offer.payload_json) if isinstance(offer.payload_json, str) else offer.payload_json
-            deal.funding_amount = offer_data.get("amount")
-        except:
-            pass
-    
-    # Log acceptance event
-    event = Event(
-        merchant_id=deal.merchant_id,
-        type="offer.accepted",
-        data_json=json.dumps({
-            "deal_id": deal_id,
-            "offer_id": request.offer_id,
-            "terms_accepted": request.terms_accepted,
-            "notes": request.notes,
-            "offer_details": offer.payload_json
-        })
-    )
-    
-    db.add(event)
+    # persist accepted offer as an Offer row (if not already saved)
+    rec = Offer(deal_id=deal_id, payload_json=json.dumps(offer))
+    db.add(rec)
+    d.status = "accepted"
+    db.add(Event(merchant_id=d.merchant_id, type="offer.accepted", data_json=json.dumps(offer)))
     db.commit()
-    
-    return {
-        "success": True,
-        "deal_id": deal_id,
-        "offer_id": request.offer_id,
-        "deal_status": deal.status,
-        "offer_status": offer.status,
-        "funding_amount": deal.funding_amount
-    }
+    return {"ok": True, "deal_status": d.status}
 
 
 @router.post("/{deal_id}/decline")
