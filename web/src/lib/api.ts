@@ -200,3 +200,6 @@ class ApiClient {
 }
 
 export const apiClient = new ApiClient()
+
+// Export as both apiClient and api for compatibility
+export const api = apiClient
