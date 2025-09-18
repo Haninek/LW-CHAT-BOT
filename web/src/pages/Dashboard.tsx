@@ -161,43 +161,44 @@ export default function Dashboard() {
   const health = getHealthStatus()
   const readiness = getReadinessCount()
 
-  // Example REST API widget configurations with proper data extraction
+  // Example REST API widget configurations with demo data and API info
   const exampleApiWidgets: ApiWidgetConfig[] = [
     {
-      id: 'crypto-price',
-      title: 'Bitcoin Price',
-      endpoint: 'https://api.coindesk.com/v1/bpi/currentprice.json',
+      id: 'demo-widget-1',
+      title: 'Demo Widget - Currency',
+      endpoint: 'https://jsonplaceholder.typicode.com/posts/1',
       method: 'GET',
       refreshInterval: 30,
       displayType: 'stat',
       color: 'warning',
-      valuePath: 'bpi.USD.rate_float',
-      subtitlePath: 'bpi.USD.description',
-      formatter: 'currency'
+      valuePath: 'id',
+      subtitlePath: 'title',
+      formatter: 'currency',
+      // This is a demo using JSONPlaceholder API which supports CORS
     },
     {
-      id: 'market-data',
-      title: 'BTC Price (CoinCap)',
-      endpoint: 'https://api.coincap.io/v2/assets/bitcoin',
+      id: 'demo-widget-2',
+      title: 'Demo Widget - Number',
+      endpoint: 'https://jsonplaceholder.typicode.com/posts/2',
       method: 'GET',
       refreshInterval: 60,
       displayType: 'stat',
       color: 'primary',
-      valuePath: 'data.priceUsd',
-      subtitlePath: 'data.name',
-      formatter: 'currency'
+      valuePath: 'userId',
+      subtitlePath: 'title',
+      formatter: 'number'
     },
     {
-      id: 'github-stars',
-      title: 'VS Code Stars',
-      endpoint: 'https://api.github.com/repos/microsoft/vscode',
+      id: 'demo-widget-3',
+      title: 'Demo Widget - Raw Value',
+      endpoint: 'https://jsonplaceholder.typicode.com/posts/3',
       method: 'GET',
       refreshInterval: 300,
       displayType: 'stat',
       color: 'success',
-      valuePath: 'stargazers_count',
-      subtitlePath: 'description',
-      formatter: 'number'
+      valuePath: 'id',
+      subtitlePath: 'title',
+      formatter: 'none'
     }
   ]
 
@@ -415,10 +416,37 @@ export default function Dashboard() {
           transition={{ delay: 0.6 }}
           className="card border-l-4 border-l-primary-500 bg-primary-50"
         >
-          <h3 className="text-lg font-semibold text-slate-900 mb-2">📡 REST API Widget Integration</h3>
-          <p className="text-sm text-slate-700 mb-3">
+          <h3 className="text-lg font-semibold text-slate-900 mb-3">📡 REST API Widget Integration</h3>
+          <p className="text-sm text-slate-700 mb-4">
             Easily integrate external REST APIs as dashboard widgets. Configure endpoints, data extraction paths, and refresh intervals.
           </p>
+          
+          {/* API Configuration Example */}
+          <div className="bg-white rounded-lg border p-4 mb-4">
+            <h4 className="font-medium text-slate-800 mb-2">📋 Example Configuration:</h4>
+            <pre className="text-xs bg-slate-50 p-3 rounded border overflow-x-auto">
+{`const myApiWidget: ApiWidgetConfig = {
+  id: 'my-custom-api',
+  title: 'My Custom API',
+  endpoint: 'https://api.example.com/data',
+  method: 'GET',
+  refreshInterval: 60, // seconds
+  displayType: 'stat',
+  color: 'primary',
+  
+  // Data extraction (dot notation)
+  valuePath: 'data.value',      // Main value
+  subtitlePath: 'data.label',   // Subtitle
+  formatter: 'currency',        // currency|number|percentage|none
+  
+  // Optional headers
+  headers: {
+    'Authorization': 'Bearer your-token',
+    'X-API-Key': 'your-api-key'
+  }
+}`}
+            </pre>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
             <div>
               <h4 className="font-medium text-slate-800 mb-1">Configuration Options:</h4>
@@ -426,18 +454,24 @@ export default function Dashboard() {
                 <li>• Custom API endpoints with path extraction</li>
                 <li>• Configurable refresh intervals</li>
                 <li>• HTTP headers & request customization</li>
-                <li>• Built-in data formatters</li>
+                <li>• Built-in data formatters (currency, number, %)</li>
               </ul>
             </div>
             <div>
               <h4 className="font-medium text-slate-800 mb-1">Supported Features:</h4>
               <ul className="text-slate-600 space-y-1">
-                <li>• Automatic error handling</li>
+                <li>• Automatic error handling & retry logic</li>
                 <li>• Loading states & indicators</li>
                 <li>• Real-time data updates</li>
-                <li>• Responsive design</li>
+                <li>• CORS-compliant requests</li>
               </ul>
             </div>
+          </div>
+
+          <div className="mt-4 p-3 bg-blue-50 rounded border border-blue-200">
+            <p className="text-xs text-blue-800">
+              <strong>💡 Tip:</strong> The demo widgets above use JSONPlaceholder API. Replace with your own endpoints!
+            </p>
           </div>
         </motion.div>
       </motion.div>
