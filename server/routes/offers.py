@@ -10,6 +10,7 @@ import math
 
 from core.database import get_db
 from models.offer import Offer
+from services.underwriting import underwriting_guardrails, UnderwritingDecision
 
 router = APIRouter()
 
@@ -34,7 +35,57 @@ async def generate_offers(
     request: GenerateOffersRequest,
     db: Session = Depends(get_db)
 ):
-    """Generate funding offers based on metrics and overrides."""
+    """Generate funding offers based on metrics and overrides with underwriting guardrails."""
+    
+    # First, run underwriting guardrails validation
+    metrics = {
+        "avg_monthly_revenue": request.avg_monthly_revenue,
+        "avg_daily_balance_3m": request.avg_daily_balance_3m,
+        "total_nsf_3m": request.total_nsf_3m,
+        "total_days_negative_3m": request.total_days_negative_3m
+    }
+    
+    underwriting_result = underwriting_guardrails.evaluate_metrics(metrics, "CA")
+    
+    # Check if deal should be declined
+    if underwriting_result.decision == UnderwritingDecision.DECLINED:
+        return {
+            "offers": [],
+            "underwriting_decision": "declined",
+            "decline_reasons": underwriting_result.reasons,
+            "violations": [
+                {
+                    "rule_id": v.rule_id,
+                    "description": v.description,
+                    "severity": v.severity.value,
+                    "actual_value": v.actual_value,
+                    "threshold_value": v.threshold_value
+                }
+                for v in underwriting_result.violations
+            ],
+            "risk_score": underwriting_result.risk_score,
+            "ca_compliant": underwriting_result.ca_compliant
+        }
+    
+    # Check if manual review required
+    if underwriting_result.decision == UnderwritingDecision.MANUAL_REVIEW:
+        return {
+            "offers": [],
+            "underwriting_decision": "manual_review",
+            "reasons": underwriting_result.reasons,
+            "violations": [
+                {
+                    "rule_id": v.rule_id,
+                    "description": v.description,
+                    "severity": v.severity.value,
+                    "actual_value": v.actual_value,
+                    "threshold_value": v.threshold_value
+                }
+                for v in underwriting_result.violations
+            ],
+            "risk_score": underwriting_result.risk_score,
+            "message": "This application requires manual underwriting review before offers can be generated"
+        }
     
     # Base offer calculation
     revenue = request.avg_monthly_revenue
@@ -67,8 +118,13 @@ async def generate_offers(
         # Calculate offer amount
         base_amount = revenue * tier["factor"]
         
-        # Apply risk adjustment
-        adjusted_amount = base_amount * (1 - risk_score * 0.3)
+        # Apply underwriting max offer amount limit
+        if underwriting_result.max_offer_amount:
+            base_amount = min(base_amount, underwriting_result.max_offer_amount)
+        
+        # Apply risk adjustment (use underwriting risk score)
+        underwriting_risk = underwriting_result.risk_score
+        adjusted_amount = base_amount * (1 - underwriting_risk * 0.3)
         
         # Round to nearest $100
         offer_amount = math.floor(adjusted_amount / 100) * 100
@@ -81,6 +137,15 @@ async def generate_offers(
         if tier.get("buy_rate"):
             expected_margin = (tier["fee"] - tier["buy_rate"]) * offer_amount
         
+        # Validate deal terms for compliance
+        terms_valid, term_issues = underwriting_guardrails.validate_deal_terms(
+            deal_amount=offer_amount,
+            fee_rate=tier["fee"],
+            term_days=tier["term_days"],
+            monthly_revenue=revenue,
+            state="CA"
+        )
+        
         offer = {
             "id": str(uuid.uuid4()),
             "tier": i + 1,
@@ -92,7 +157,10 @@ async def generate_offers(
             "buy_rate": tier.get("buy_rate"),
             "expected_margin": int(expected_margin) if expected_margin else None,
             "daily_payment": int(payback_amount / tier["term_days"]),
-            "risk_score": round(risk_score, 2),
+            "risk_score": round(underwriting_risk, 2),
+            "underwriting_decision": underwriting_result.decision.value,
+            "terms_compliant": terms_valid,
+            "compliance_issues": term_issues,
             "rationale": f"Based on ${int(revenue):,}/month revenue, {tier['term_days']}-day term"
         }
         
@@ -112,12 +180,21 @@ async def generate_offers(
     
     return {
         "offers": offers,
+        "underwriting_decision": underwriting_result.decision.value,
+        "underwriting_summary": {
+            "approved": underwriting_result.decision == UnderwritingDecision.APPROVED,
+            "risk_score": underwriting_result.risk_score,
+            "ca_compliant": underwriting_result.ca_compliant,
+            "max_offer_amount": underwriting_result.max_offer_amount,
+            "violation_count": len(underwriting_result.violations),
+            "reasons": underwriting_result.reasons
+        },
         "metrics_used": {
             "avg_monthly_revenue": revenue,
             "avg_daily_balance_3m": balance,
             "total_nsf_3m": nsf_count,
             "total_days_negative_3m": negative_days,
-            "calculated_risk_score": risk_score
+            "underwriting_risk_score": underwriting_result.risk_score
         },
         "overrides_applied": request.overrides.dict() if request.overrides else None
     }
