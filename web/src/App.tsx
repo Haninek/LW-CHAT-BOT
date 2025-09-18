@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom'
-import { Menu, X, BarChart3, MessageSquare, Building2, Send, Link as LinkIcon, DollarSign, Search, FileText, Settings as SettingsIcon, Bell, User } from 'lucide-react'
+import { Menu, X, BarChart3, MessageSquare, Building2, Send, Link as LinkIcon, DollarSign, Search, FileText, Settings as SettingsIcon, Bell, User, FolderOpen, Shield } from 'lucide-react'
 import { useAppStore } from './state/useAppStore'
 
 // Underwriting Wizard Pages
@@ -13,6 +13,9 @@ import Background from './pages/Background'
 import Sign from './pages/Sign'
 import Settings from './pages/Settings'
 import Campaigns from './pages/Campaigns'
+import DealsList from './pages/DealsList'
+import DealDetail from './pages/DealDetail'
+import AdminBackgroundReview from './pages/AdminBackgroundReview'
 
 
 // Sidebar Component
@@ -23,11 +26,13 @@ function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
     { path: '/dashboard', name: 'Dashboard', icon: BarChart3 },
     { path: '/chat', name: 'Chat', icon: MessageSquare },
     { path: '/merchants', name: 'Merchants', icon: Building2 },
+    { path: '/deals', name: 'Deals', icon: FolderOpen },
     { path: '/campaigns', name: 'Campaigns', icon: Send },
     { path: '/connectors', name: 'Connectors', icon: LinkIcon },
     { path: '/offers', name: 'Offers Lab', icon: DollarSign },
     { path: '/background', name: 'Background', icon: Search },
     { path: '/sign', name: 'Sign', icon: FileText },
+    { path: '/admin/background', name: 'Admin Review', icon: Shield },
     { path: '/settings', name: 'Settings', icon: SettingsIcon }
   ]
 
@@ -169,11 +174,14 @@ function App() {
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/chat" element={<Chat />} />
               <Route path="/merchants" element={<Merchants />} />
+              <Route path="/deals" element={<DealsList />} />
+              <Route path="/deals/:dealId" element={<DealDetail />} />
               <Route path="/campaigns" element={<Campaigns />} />
               <Route path="/connectors" element={<Connectors />} />
               <Route path="/offers" element={<OffersLab />} />
               <Route path="/background" element={<Background />} />
               <Route path="/sign" element={<Sign />} />
+              <Route path="/admin/background" element={<AdminBackgroundReview />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>
           </div>

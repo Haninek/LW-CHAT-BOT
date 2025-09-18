@@ -31,7 +31,9 @@ from routes import (
     sign,
     events,
     admin,
-    queue
+    queue,
+    deals_read,
+    deals_actions
 )
 
 # Configure logging
@@ -103,6 +105,8 @@ def create_app() -> FastAPI:
     app.include_router(events.router, prefix="/api/events", tags=["events"])
     app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
     app.include_router(queue.router, prefix="/api/queue", tags=["queue"])
+    app.include_router(deals_read.router, prefix="/api/deals", tags=["deals.read"])
+    app.include_router(deals_actions.router, prefix="/api/deals", tags=["deals.actions"])
 
     # Serve static files for production
     if not settings.DEBUG and os.path.exists("../web/dist"):
