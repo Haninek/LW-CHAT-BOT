@@ -25,7 +25,13 @@ export function useApiWidget(config: ApiWidgetConfig): WidgetState & { refetch: 
     JSON.stringify(config.body)
   ])
 
-  const fetchData = useCallback(async (isRetry = false) => {
+  const fetchData = useCallback(async () => {
+    // Clear any pending retry timeout
+    if (retryTimeoutRef.current) {
+      window.clearTimeout(retryTimeoutRef.current)
+      retryTimeoutRef.current = undefined
+    }
+    
     // Abort previous request
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
@@ -88,7 +94,7 @@ export function useApiWidget(config: ApiWidgetConfig): WidgetState & { refetch: 
         const jitter = Math.random() * 1000 // Add jitter to prevent thundering herd
         
         retryTimeoutRef.current = window.setTimeout(() => {
-          fetchData(true)
+          fetchData()
         }, backoffDelay + jitter)
         
         return
@@ -181,7 +187,7 @@ export function useApiWidget(config: ApiWidgetConfig): WidgetState & { refetch: 
 
     // Set up auto-refresh if configured
     if (stableConfig.refreshInterval && stableConfig.refreshInterval > 0) {
-      intervalRef.current = window.setInterval(() => fetchData(false), stableConfig.refreshInterval * 1000)
+      intervalRef.current = window.setInterval(() => fetchData(), stableConfig.refreshInterval * 1000)
     }
 
     return () => {
