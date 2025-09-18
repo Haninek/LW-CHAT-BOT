@@ -27,6 +27,7 @@ class Merchant(Base):
     # Relationships
     field_states = relationship("FieldState", back_populates="merchant", cascade="all, delete-orphan")
     intakes = relationship("Intake", back_populates="merchant", cascade="all, delete-orphan")
+    deals = relationship("Deal", back_populates="merchant", cascade="all, delete-orphan")
     offers = relationship("Offer", back_populates="merchant", cascade="all, delete-orphan")
     background_jobs = relationship("BackgroundJob", back_populates="merchant", cascade="all, delete-orphan")
     agreements = relationship("Agreement", back_populates="merchant", cascade="all, delete-orphan")
