@@ -1,6 +1,6 @@
 """Contract signing endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 import uuid
@@ -8,6 +8,7 @@ import json
 
 from core.database import get_db
 from core.config import settings
+from core.security import verify_partner_key
 from models.agreement import Agreement
 from models.event import Event
 
@@ -26,54 +27,84 @@ class WebhookRequest(BaseModel):
 
 
 @router.post("/send")
-async def send_contract(
-    request: SendContractRequest,
-    db: Session = Depends(get_db)
+async def send_for_signature(
+    deal_id: str = Query(..., description="Deal ID"),
+    recipient_email: str = Query(..., description="Recipient email address"),
+    force: bool = Query(False, description="Force send even if background check not OK"),
+    template_id: Optional[str] = Query(None, description="Template ID"),
+    db: Session = Depends(get_db),
+    _: bool = Depends(verify_partner_key)
 ):
-    """Send contract for signing via DocuSign/Dropbox Sign."""
+    """Send document for digital signature with optional force override."""
+    
+    from models.deal import Deal
+    from sqlalchemy import text
+    
+    deal = db.query(Deal).filter(Deal.id == deal_id).first()
+    if not deal:
+        raise HTTPException(status_code=404, detail="Deal not found")
+    
+    # Check background status unless forced
+    if not force:
+        bg_query = text("""
+          SELECT data FROM events
+          WHERE deal_id = :deal_id AND type = 'background.result'
+          ORDER BY created_at DESC LIMIT 1
+        """)
+        
+        bg_result = db.execute(bg_query, {"deal_id": deal_id}).first()
+        
+        if not bg_result:
+            raise HTTPException(
+                status_code=400, 
+                detail="Background check missing; pass force=true to override"
+            )
+        
+        status = (bg_result[0] or {}).get("status")
+        if status != "OK":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Background check not OK ({status}); pass force=true to override"
+            )
     
     agreement_id = str(uuid.uuid4())
     envelope_id = f"mock-envelope-{agreement_id[:8]}"
     
-    if settings.MOCK_MODE:
-        # Create mock agreement
-        agreement = Agreement(
-            id=agreement_id,
-            merchant_id=request.merchant_id,
-            provider="mock",
-            status="sent",
-            envelope_id=envelope_id
-        )
-        db.add(agreement)
-        
-        # Log event
-        event = Event(
-            type="contract.sent",
-            merchant_id=request.merchant_id,
-            data_json=json.dumps({
-                "agreement_id": agreement_id,
-                "offer_id": request.offer_id,
-                "provider": "mock"
-            })
-        )
-        db.add(event)
-        db.commit()
-        
-        return {
-            "agreement_id": agreement_id,
-            "envelope_id": envelope_id,
-            "status": "sent",
-            "provider": "mock",
-            "signing_url": f"https://mock-signing.example.com/{envelope_id}",
-            "mock_mode": True
-        }
+    # Create mock agreement for now
+    agreement = Agreement(
+        id=agreement_id,
+        merchant_id=deal.merchant_id,
+        provider="mock",
+        status="sent",
+        envelope_id=envelope_id
+    )
+    db.add(agreement)
     
-    else:
-        # TODO: Implement actual DocuSign/Dropbox Sign integration
-        raise HTTPException(
-            status_code=501,
-            detail="Contract signing requires API keys - currently in mock mode"
-        )
+    # Log signing request event
+    event = Event(
+        type="sign.sent",
+        merchant_id=deal.merchant_id,
+        data_json=json.dumps({
+            "deal_id": deal_id,
+            "envelope_id": envelope_id,
+            "recipient_email": recipient_email,
+            "template_id": template_id,
+            "force": force,
+            "agreement_id": agreement_id
+        })
+    )
+    db.add(event)
+    db.commit()
+    
+    return {
+        "success": True,
+        "envelope_id": envelope_id,
+        "recipient_email": recipient_email,
+        "status": "sent",
+        "force": force,
+        "agreement_id": agreement_id,
+        "message": "Document sent for signature" + (" (forced)" if force else "")
+    }
 
 
 @router.post("/webhook")
