@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import Optional, List
 from datetime import datetime, timedelta
+import json
 
 from core.database import get_db
 from core.security import verify_partner_key
@@ -106,7 +107,7 @@ async def list_deals(
                 "state": merchant.state
             },
             "metrics_summary": metrics.payload if metrics else None,
-            "background": background.data_json if background else None
+            "background": json.loads(background.data_json) if background and background.data_json else None
         })
     
     return {"items": items}
@@ -210,15 +211,15 @@ async def get_deal(
             }
             for offer in offers
         ],
-        "background": background_event.data_json if background_event else None,
+        "background": json.loads(background_event.data_json) if background_event and background_event.data_json else None,
         "signing": {
-            "sent": sign_sent_event.data_json if sign_sent_event else None,
-            "signed": sign_signed_event.data_json if sign_signed_event else None
+            "sent": json.loads(sign_sent_event.data_json) if sign_sent_event and sign_sent_event.data_json else None,
+            "signed": json.loads(sign_signed_event.data_json) if sign_signed_event and sign_signed_event.data_json else None
         },
         "timeline": [
             {
                 "type": e.type,
-                "data": e.data_json,
+                "data": json.loads(e.data_json) if e.data_json else None,
                 "created_at": e.created_at.isoformat()
             }
             for e in events
@@ -262,5 +263,5 @@ async def get_deal_summary(
             "documents": doc_count,
             "offers": offer_count
         },
-        "background_status": background.data_json.get("status") if background and background.data_json else None
+        "background_status": json.loads(background.data_json).get("status") if background and background.data_json else None
     }

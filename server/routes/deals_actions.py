@@ -64,16 +64,15 @@ async def accept_offer(
     
     # Log acceptance event
     event = Event(
-        tenant_id=deal.tenant_id,
         merchant_id=deal.merchant_id,
-        deal_id=deal_id,
         type="offer.accepted",
-        data={
+        data_json=json.dumps({
+            "deal_id": deal_id,
             "offer_id": request.offer_id,
             "terms_accepted": request.terms_accepted,
             "notes": request.notes,
             "offer_details": offer.payload_json
-        }
+        })
     )
     
     db.add(event)
@@ -102,20 +101,22 @@ async def decline_deal(
     if not deal:
         raise HTTPException(status_code=404, detail="Deal not found")
     
+    # Capture previous status before updating
+    previous_status = deal.status
+    
     # Update deal status
     deal.status = "declined"
     
     # Log decline event
     event = Event(
-        tenant_id=deal.tenant_id,
         merchant_id=deal.merchant_id,
-        deal_id=deal_id,
         type="deal.declined",
-        data={
+        data_json=json.dumps({
+            "deal_id": deal_id,
             "reason": request.reason,
             "notes": request.notes,
-            "previous_status": deal.status
-        }
+            "previous_status": previous_status
+        })
     )
     
     db.add(event)
@@ -162,16 +163,15 @@ async def update_deal_status(
     
     # Log status change event
     event = Event(
-        tenant_id=deal.tenant_id,
         merchant_id=deal.merchant_id,
-        deal_id=deal_id,
         type="deal.status_changed",
-        data={
+        data_json=json.dumps({
+            "deal_id": deal_id,
             "previous_status": previous_status,
             "new_status": request.status,
             "reason": request.reason,
             "notes": request.notes
-        }
+        })
     )
     
     db.add(event)
@@ -212,14 +212,13 @@ async def reopen_deal(
     
     # Log reopen event
     event = Event(
-        tenant_id=deal.tenant_id,
         merchant_id=deal.merchant_id,
-        deal_id=deal_id,
         type="deal.reopened",
-        data={
+        data_json=json.dumps({
+            "deal_id": deal_id,
             "previous_status": previous_status,
             "notes": notes
-        }
+        })
     )
     
     db.add(event)

@@ -23,17 +23,17 @@ async def list_background_reviews(
 ):
     """List latest background review results per deal."""
     
-    # Get latest background.result per deal
+    # Get latest background.result per merchant (since events don't have deal_id)
     query = text("""
       WITH latest AS (
-        SELECT e.*, ROW_NUMBER() OVER (PARTITION BY e.deal_id ORDER BY e.created_at DESC) AS rn
+        SELECT e.*, ROW_NUMBER() OVER (PARTITION BY e.merchant_id ORDER BY e.created_at DESC) AS rn
         FROM events e WHERE e.type='background.result'
       )
-      SELECT l.deal_id, l.merchant_id, l.data, d.status AS deal_status, 
+      SELECT json_extract(l.data_json, '$.deal_id') as deal_id, l.merchant_id, l.data_json, d.status AS deal_status, 
              m.legal_name, m.email, m.phone, l.created_at
       FROM latest l
-      JOIN deals d ON d.id = l.deal_id
       JOIN merchants m ON m.id = l.merchant_id
+      JOIN deals d ON d.merchant_id = l.merchant_id
       WHERE l.rn = 1
       ORDER BY l.created_at DESC
       LIMIT :lim
@@ -43,7 +43,10 @@ async def list_background_reviews(
 
     items = []
     for r in rows:
-        decision = (r["data"] or {}).get("status")
+        # Parse JSON data
+        import json
+        data = json.loads(r["data_json"]) if r["data_json"] else {}
+        decision = data.get("status")
         if status and decision != status: 
             continue
         items.append({
@@ -53,7 +56,7 @@ async def list_background_reviews(
             "contact": {"email": r["email"], "phone": r["phone"]},
             "deal_status": r["deal_status"],
             "decision": decision,
-            "reasons": (r["data"] or {}).get("reasons", {}),
+            "reasons": data.get("reasons", {}),
             "created_at": r["created_at"].isoformat() if r["created_at"] else None
         })
     
@@ -87,7 +90,7 @@ async def get_deals_summary(
             "funding_amount": r["funding_amount"],
             "legal_name": r["legal_name"],
             "contact": {"email": r["email"], "phone": r["phone"]},
-            "created_at": r["created_at"].isoformat() if r["created_at"] else None
+            "created_at": r["created_at"] if r["created_at"] else None
         })
     
     return {"items": items}
@@ -107,9 +110,12 @@ async def force_deal_action(
     if not deal:
         raise HTTPException(status_code=404, detail="Deal not found")
     
-    # Update deal status based on action
+    # Capture previous status
+    previous_status = deal.status
+    
+    # Update deal status based on action (using standard statuses)
     if action == "approve":
-        deal.status = "approved"
+        deal.status = "accepted"  # Use standard status instead of "approved"
     elif action == "decline":
         deal.status = "declined"
     elif action == "reset":
@@ -118,17 +124,17 @@ async def force_deal_action(
         raise HTTPException(status_code=400, detail="Invalid action")
     
     # Log the forced action as an event
+    import json
     event = Event(
-        tenant_id=deal.tenant_id,
         merchant_id=deal.merchant_id,
-        deal_id=deal_id,
         type="admin.force_action",
-        data={
+        data_json=json.dumps({
+            "deal_id": deal_id,
             "action": action,
             "reason": reason,
             "forced": True,
-            "previous_status": deal.status
-        }
+            "previous_status": previous_status
+        })
     )
     
     db.add(event)
