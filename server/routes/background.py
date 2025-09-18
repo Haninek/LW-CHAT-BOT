@@ -1,30 +1,57 @@
-"""Background check endpoints."""
+"""Background check endpoints with CLEAR, NYSCEF, and ownership verification."""
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 import uuid
 import json
+import asyncio
 
 from core.database import get_db
 from core.config import settings
+from core.security import verify_partner_key
 from models.background_job import BackgroundJob
+from services.background_checks import (
+    background_check_orchestrator,
+    PersonIdentity,
+    BusinessIdentity,
+    CheckType
+)
 
 router = APIRouter()
 
 
+class PersonData(BaseModel):
+    first_name: str
+    last_name: str
+    date_of_birth: Optional[str] = None
+    ssn_last4: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+
+
+class BusinessData(BaseModel):
+    legal_name: str
+    ein: Optional[str] = None
+    state: Optional[str] = None
+    formation_date: Optional[str] = None
+
+
 class BackgroundCheckRequest(BaseModel):
     merchant_id: str
-    person: dict  # {first, last, dob, ssn4}
+    person: PersonData
+    business: BusinessData
+    check_types: Optional[List[str]] = None  # Specific checks to run
 
 
 @router.post("/check")
-async def start_background_check(
+async def start_comprehensive_background_check(
     request: BackgroundCheckRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(verify_partner_key)
 ):
-    """Start background check via CLEAR."""
+    """Start comprehensive background check with CLEAR, NYSCEF, and ownership verification."""
     
     job_id = str(uuid.uuid4())
     
@@ -36,44 +63,77 @@ async def start_background_check(
     db.add(job)
     db.commit()
     
-    if settings.MOCK_MODE:
-        # Simulate immediate completion with mock result
-        mock_result = {
-            "decision": "OK",  # OK, Review, Decline
-            "notes": [
-                "Identity verification: PASS",
-                "Criminal background: CLEAR", 
-                "Credit score: 720 (Good)"
-            ],
-            "mock_mode": True,
-            "confidence": 0.95
-        }
+    # Convert request data to service objects
+    person = PersonIdentity(
+        first_name=request.person.first_name,
+        last_name=request.person.last_name,
+        date_of_birth=request.person.date_of_birth,
+        ssn_last4=request.person.ssn_last4,
+        email=request.person.email,
+        phone=request.person.phone
+    )
+    
+    business = BusinessIdentity(
+        legal_name=request.business.legal_name,
+        ein=request.business.ein,
+        state=request.business.state,
+        formation_date=request.business.formation_date
+    )
+    
+    # Determine which checks to run
+    check_types = None
+    if request.check_types:
+        check_types = []
+        for check_type_str in request.check_types:
+            try:
+                check_types.append(CheckType(check_type_str))
+            except ValueError:
+                pass  # Skip invalid check types
+    
+    try:
+        # Run comprehensive background checks
+        results = await background_check_orchestrator.run_comprehensive_check(
+            person=person,
+            business=business,
+            check_types=check_types
+        )
         
+        # Aggregate flag-only results
+        aggregated = background_check_orchestrator.aggregate_flags(results)
+        
+        # Update job with flag-only results
         job.status = "completed"
-        job.result_json = json.dumps(mock_result)
+        job.result_json = json.dumps(aggregated)
         db.commit()
         
         return {
             "job_id": job.id,
             "status": "completed",
-            "result": mock_result
+            "result": aggregated,
+            "message": "Background checks completed with flag-only results for compliance"
         }
     
-    else:
-        # TODO: Implement actual CLEAR integration
+    except Exception as e:
+        # Update job with error status
+        job.status = "error"
+        job.result_json = json.dumps({"error": str(e)})
+        db.commit()
+        
         return {
             "job_id": job.id,
-            "status": "pending",
-            "message": "Background check started - check status for results"
+            "status": "error",
+            "error": str(e),
+            "message": "Background check failed"
         }
 
 
 @router.get("/jobs/{job_id}")
 async def get_background_job(
     job_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(verify_partner_key)
 ):
-    """Get background check job status and results."""
+    """Get background check job status and flag-only results."""
     
     job = db.query(BackgroundJob).filter(BackgroundJob.id == job_id).first()
     if not job:
@@ -88,5 +148,59 @@ async def get_background_job(
         "merchant_id": job.merchant_id,
         "status": job.status,
         "result": result,
-        "created_at": job.created_at.isoformat()
+        "created_at": job.created_at.isoformat(),
+        "compliance_note": "Results contain flag-only indicators for compliance purposes"
+    }
+
+
+@router.post("/check-types")
+async def get_available_check_types(_: bool = Depends(verify_partner_key)):
+    """Get available background check types."""
+    
+    return {
+        "available_checks": [
+            {
+                "type": CheckType.CLEAR_IDENTITY.value,
+                "description": "CLEAR identity verification",
+                "provider": "CLEAR"
+            },
+            {
+                "type": CheckType.CLEAR_CRIMINAL.value,
+                "description": "CLEAR criminal background check",
+                "provider": "CLEAR"
+            },
+            {
+                "type": CheckType.NYSCEF_COURT.value,
+                "description": "New York State court records",
+                "provider": "NYSCEF"
+            },
+            {
+                "type": CheckType.EIN_OWNERSHIP.value,
+                "description": "EIN ownership verification",
+                "provider": "Ownership Verification Service"
+            },
+            {
+                "type": CheckType.SSN_OWNERSHIP.value,
+                "description": "SSN ownership verification",
+                "provider": "Ownership Verification Service"
+            }
+        ],
+        "flag_types": [
+            {
+                "flag": "clear",
+                "description": "Check passed with no issues"
+            },
+            {
+                "flag": "review_required",
+                "description": "Manual review recommended"
+            },
+            {
+                "flag": "declined", 
+                "description": "Check failed - decline recommended"
+            },
+            {
+                "flag": "error",
+                "description": "Check could not be completed"
+            }
+        ]
     }
