@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { Rule, Template, Persona, Merchant, FieldId, RuleEngineResult } from '../types'
+import { Rule, Persona, Merchant, FieldId, RuleEngineResult } from '../types'
 import { storage, initializeSeedData } from '../lib/seedData'
 
 export type ChatMessage = {
@@ -30,12 +30,10 @@ interface AppState {
   apiConfig: ApiConfig
   setApiConfig: (config: Partial<ApiConfig>) => void
   
-  // Rules & Templates - core data
+  // Rules - core data
   rules: Rule[]
-  templates: Template[]
   persona: Persona
   setRules: (rules: Rule[]) => void
-  setTemplates: (templates: Template[]) => void
   setPersona: (persona: Persona) => void
   addRule: (rule: Rule) => void
   updateRule: (id: string, rule: Partial<Rule>) => void
@@ -74,25 +72,27 @@ export const useAppStore = create<AppState>()(
     (set, get) => ({
       // API Configuration
       apiConfig: {
-        baseUrl: import.meta.env.VITE_API_BASE || '',
-        apiKey: import.meta.env.VITE_API_KEY || '',
+        baseUrl: (typeof window !== 'undefined' && (window as any).ENV?.VITE_API_BASE) || 'http://localhost:8000',
+        apiKey: (typeof window !== 'undefined' && (window as any).ENV?.VITE_API_KEY) || '',
         idempotencyEnabled: true
       },
       setApiConfig: (config) => set((state) => ({
         apiConfig: { ...state.apiConfig, ...config }
       })),
 
-      // Rules & Templates - core data
+      // Rules - core data
       rules: [],
-      templates: [],
-      persona: { style: "friendly", reading: "8th", emoji: "med" },
+      persona: { 
+        id: 'default',
+        displayName: 'Chad - AI Assistant',
+        signature: 'Best regards,\nChad',
+        style: "friendly", 
+        reading: "8th", 
+        emoji: "med" 
+      },
       setRules: (rules) => {
         set({ rules });
         storage.setRules(rules);
-      },
-      setTemplates: (templates) => {
-        set({ templates });
-        storage.setTemplates(templates);
       },
       setPersona: (persona) => {
         set({ persona });

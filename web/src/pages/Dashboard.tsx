@@ -1,19 +1,22 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { 
-  Activity, 
   Users, 
   DollarSign, 
   TrendingUp, 
   CheckCircle, 
   AlertCircle,
   Clock,
-  Zap
+  Zap,
+  BarChart3,
+  Shield,
+  Database,
+  Globe,
+  RefreshCw
 } from 'lucide-react'
 import { apiClient } from '../lib/api'
 import { ApiWidget } from '../components/ApiWidget'
 import { ApiWidgetConfig } from '../types/widget'
-// import { useAppStore } from '../state/useAppStore'
 
 interface HealthData {
   status: string
@@ -25,19 +28,35 @@ interface ReadinessData {
   checks: Record<string, boolean>
 }
 
-function StatCard({ title, value, subtitle, icon: Icon, color = 'primary', trend }: {
+function StatCard({ title, value, subtitle, icon: Icon, color = 'primary', trend, isLoading = false }: {
   title: string
   value: string | number
   subtitle?: string
   icon: any
-  color?: 'primary' | 'success' | 'warning' | 'accent'
+  color?: 'primary' | 'success' | 'warning' | 'error'
   trend?: { value: number; direction: 'up' | 'down' }
+  isLoading?: boolean
 }) {
   const colorClasses = {
-    primary: 'from-primary-500 to-primary-600',
-    success: 'from-success-500 to-success-600',
-    warning: 'from-warning-500 to-warning-600',
-    accent: 'from-accent-500 to-accent-600'
+    primary: 'from-blue-500 to-blue-600 shadow-blue-500/25',
+    success: 'from-emerald-500 to-emerald-600 shadow-emerald-500/25',
+    warning: 'from-amber-500 to-amber-600 shadow-amber-500/25', 
+    error: 'from-red-500 to-red-600 shadow-red-500/25'
+  }
+
+  if (isLoading) {
+    return (
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200/50 animate-pulse">
+        <div className="flex items-center justify-between">
+          <div className="flex-1">
+            <div className="h-4 bg-slate-200 rounded w-24 mb-3"></div>
+            <div className="h-8 bg-slate-200 rounded w-16 mb-2"></div>
+            <div className="h-3 bg-slate-200 rounded w-20"></div>
+          </div>
+          <div className="w-14 h-14 bg-slate-200 rounded-xl"></div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -45,32 +64,32 @@ function StatCard({ title, value, subtitle, icon: Icon, color = 'primary', trend
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className="card group hover:scale-105"
+      className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200/50 hover:shadow-md transition-all duration-300 group"
     >
       <div className="flex items-center justify-between">
         <div className="flex-1">
           <p className="text-sm font-medium text-slate-600 group-hover:text-slate-700 transition-colors">
             {title}
           </p>
-          <p className="text-2xl font-bold text-slate-900 mt-1">
+          <p className="text-3xl font-bold text-slate-900 mt-2 mb-1">
             {value}
           </p>
           {subtitle && (
-            <p className="text-xs text-slate-500 mt-1">{subtitle}</p>
+            <p className="text-sm text-slate-500">{subtitle}</p>
           )}
           {trend && (
-            <div className={`flex items-center mt-2 text-xs ${
-              trend.direction === 'up' ? 'text-success-600' : 'text-accent-600'
+            <div className={`flex items-center mt-3 text-sm font-medium ${
+              trend.direction === 'up' ? 'text-emerald-600' : 'text-red-500'
             }`}>
-              <TrendingUp className={`w-3 h-3 mr-1 ${
+              <TrendingUp className={`w-4 h-4 mr-1 ${
                 trend.direction === 'down' ? 'rotate-180' : ''
               }`} />
-              {trend.value}% vs last month
+              {Math.abs(trend.value)}% vs last month
             </div>
           )}
         </div>
-        <div className={`w-12 h-12 bg-gradient-to-r ${colorClasses[color]} rounded-xl flex items-center justify-center shadow-lg`}>
-          <Icon className="w-6 h-6 text-white" />
+        <div className={`w-14 h-14 bg-gradient-to-r ${colorClasses[color]} rounded-xl flex items-center justify-center shadow-lg`}>
+          <Icon className="w-7 h-7 text-white" />
         </div>
       </div>
     </motion.div>
@@ -82,13 +101,12 @@ function QuickAction({ title, description, icon: Icon, onClick, color = 'primary
   description: string
   icon: any
   onClick: () => void
-  color?: 'primary' | 'success' | 'warning' | 'accent'
+  color?: 'primary' | 'success' | 'warning'
 }) {
   const colorClasses = {
-    primary: 'hover:bg-primary-50 text-primary-600 border-primary-200',
-    success: 'hover:bg-success-50 text-success-600 border-success-200',
-    warning: 'hover:bg-warning-50 text-warning-600 border-warning-200',
-    accent: 'hover:bg-accent-50 text-accent-600 border-accent-200'
+    primary: 'bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200',
+    success: 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-200',
+    warning: 'bg-amber-50 text-amber-700 hover:bg-amber-100 border-amber-200'
   }
 
   return (
@@ -96,39 +114,48 @@ function QuickAction({ title, description, icon: Icon, onClick, color = 'primary
       onClick={onClick}
       whileHover={{ scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
-      className={`w-full p-4 text-left border-2 border-dashed border-slate-200 rounded-xl transition-all duration-200 ${colorClasses[color]}`}
+      className={`p-4 rounded-xl border-2 transition-all duration-200 text-left w-full ${colorClasses[color]}`}
     >
-      <div className="flex items-center space-x-3">
-        <Icon className="w-5 h-5 flex-shrink-0" />
+      <div className="flex items-center">
+        <Icon className="w-8 h-8 mr-3" />
         <div>
-          <p className="font-medium text-sm">{title}</p>
-          <p className="text-xs text-slate-500 mt-1">{description}</p>
+          <h3 className="font-semibold text-sm">{title}</h3>
+          <p className="text-xs opacity-75 mt-1">{description}</p>
         </div>
       </div>
     </motion.button>
   )
 }
 
-export default function Dashboard() {
+export function Dashboard() {
   const [healthData, setHealthData] = useState<HealthData | null>(null)
   const [readinessData, setReadinessData] = useState<ReadinessData | null>(null)
   const [loading, setLoading] = useState(true)
-  // const seedDemoData = useAppStore(state => state.seedDemoData) // TODO: Add if needed
-
-  useEffect(() => {
-    loadDashboardData()
-  }, [])
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
 
   const loadDashboardData = async () => {
+    setLoading(true)
     try {
-      setLoading(true)
-      const [healthResponse, readinessResponse] = await Promise.all([
+      const [healthResult, readinessResult] = await Promise.allSettled([
         apiClient.getHealth(),
         apiClient.getReadiness()
       ])
-      
-      setHealthData(healthResponse.data || null)
-      setReadinessData(readinessResponse.data || null)
+
+      if (healthResult.status === 'fulfilled') {
+        setHealthData(healthResult.value.data || null)
+      } else {
+        console.warn('Health check failed:', healthResult.reason)
+        setHealthData(null)
+      }
+
+      if (readinessResult.status === 'fulfilled') {
+        setReadinessData(readinessResult.value.data || null)
+      } else {
+        console.warn('Readiness check failed:', readinessResult.reason)
+        setReadinessData(null)
+      }
+
+      setLastRefresh(new Date())
     } catch (error) {
       console.error('Failed to load dashboard data:', error)
     } finally {
@@ -136,17 +163,34 @@ export default function Dashboard() {
     }
   }
 
+  useEffect(() => {
+    loadDashboardData()
+  }, [])
+
+  // Mock analytics data for now
+  const mockStats = [
+    { title: 'Total Applications', value: '1,247', subtitle: 'This month', icon: Users, color: 'primary' as const, trend: { value: 12, direction: 'up' as const } },
+    { title: 'Approved Amount', value: '$2.4M', subtitle: 'This quarter', icon: DollarSign, color: 'success' as const, trend: { value: 8, direction: 'up' as const } },
+    { title: 'Processing Time', value: '2.3 min', subtitle: 'Average', icon: Clock, color: 'warning' as const, trend: { value: 15, direction: 'down' as const } },
+    { title: 'Success Rate', value: '94.2%', subtitle: 'Approval rate', icon: CheckCircle, color: 'success' as const, trend: { value: 3, direction: 'up' as const } }
+  ]
+
   const formatUptime = (seconds: number) => {
-    const hours = Math.floor(seconds / 3600)
+    if (!seconds) return 'Unknown'
+    const days = Math.floor(seconds / 86400)
+    const hours = Math.floor((seconds % 86400) / 3600)
     const minutes = Math.floor((seconds % 3600) / 60)
-    return `${hours}h ${minutes}m`
+    
+    if (days > 0) return `${days}d ${hours}h ${minutes}m`
+    if (hours > 0) return `${hours}h ${minutes}m`
+    return `${minutes}m`
   }
 
   const getHealthStatus = () => {
-    if (!healthData) return { status: 'unknown', color: 'warning' }
+    if (!healthData) return { status: 'Offline', color: 'error' as const }
     return healthData.status === 'healthy' 
-      ? { status: 'Healthy', color: 'success' }
-      : { status: 'Unhealthy', color: 'warning' }
+      ? { status: 'Healthy', color: 'success' as const }
+      : { status: 'Issues', color: 'warning' as const }
   }
 
   const getReadinessCount = () => {
@@ -161,320 +205,239 @@ export default function Dashboard() {
   const health = getHealthStatus()
   const readiness = getReadinessCount()
 
-  // Example REST API widget configurations with demo data and API info
+  // Working demo API widgets with proper CORS-enabled endpoints
   const exampleApiWidgets: ApiWidgetConfig[] = [
     {
-      id: 'demo-widget-1',
-      title: 'Demo Widget - Currency',
-      endpoint: 'https://jsonplaceholder.typicode.com/posts/1',
-      method: 'GET',
-      refreshInterval: 30,
-      displayType: 'stat',
-      color: 'warning',
-      valuePath: 'id',
-      subtitlePath: 'title',
-      formatter: 'currency',
-      // This is a demo using JSONPlaceholder API which supports CORS
-    },
-    {
-      id: 'demo-widget-2',
-      title: 'Demo Widget - Number',
-      endpoint: 'https://jsonplaceholder.typicode.com/posts/2',
+      id: 'demo-posts',
+      title: 'Total Posts',
+      endpoint: 'https://jsonplaceholder.typicode.com/posts',
       method: 'GET',
       refreshInterval: 60,
       displayType: 'stat',
       color: 'primary',
-      valuePath: 'userId',
-      subtitlePath: 'title',
+      valuePath: 'length',
       formatter: 'number'
     },
     {
-      id: 'demo-widget-3',
-      title: 'Demo Widget - Raw Value',
-      endpoint: 'https://jsonplaceholder.typicode.com/posts/3',
+      id: 'demo-users', 
+      title: 'Active Users',
+      endpoint: 'https://jsonplaceholder.typicode.com/users',
       method: 'GET',
-      refreshInterval: 300,
+      refreshInterval: 120,
       displayType: 'stat',
       color: 'success',
-      valuePath: 'id',
-      subtitlePath: 'title',
-      formatter: 'none'
+      valuePath: 'length',
+      formatter: 'number'
+    },
+    {
+      id: 'demo-comments',
+      title: 'Comments Today',
+      endpoint: 'https://jsonplaceholder.typicode.com/comments?postId=1',
+      method: 'GET',
+      refreshInterval: 30,
+      displayType: 'stat',
+      color: 'info',
+      valuePath: 'length',
+      formatter: 'number'
     }
   ]
 
   return (
-    <div className="space-y-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/30">
       {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between"
-      >
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">Dashboard</h1>
-          <p className="text-slate-600 mt-1">
-            Monitor your LendWisely chatbot performance and system health
-          </p>
-        </div>
-        <motion.button
-          onClick={loadDashboardData}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          className="btn-primary"
-        >
-          <Activity className="w-4 h-4 mr-2" />
-          Refresh
-        </motion.button>
-      </motion.div>
-
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {loading ? (
-          // Loading skeleton
-          Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="card">
-              <div className="animate-pulse">
-                <div className="h-4 bg-slate-200 rounded w-3/4 mb-3"></div>
-                <div className="h-8 bg-slate-200 rounded w-1/2 mb-2"></div>
-                <div className="h-3 bg-slate-200 rounded w-2/3"></div>
-              </div>
+      <div className="bg-white/80 backdrop-blur-sm border-b border-slate-200/50 sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex items-center justify-between py-6"
+          >
+            <div>
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
+                Underwriting Wizard
+              </h1>
+              <p className="text-slate-600 mt-1">
+                AI-powered lending operations platform
+              </p>
             </div>
-          ))
-        ) : (
-          <>
+            <div className="flex items-center space-x-4">
+              {lastRefresh && (
+                <div className="text-sm text-slate-500">
+                  Last updated: {lastRefresh.toLocaleTimeString()}
+                </div>
+              )}
+              <motion.button
+                onClick={loadDashboardData}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                disabled={loading}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-medium shadow-lg shadow-blue-600/25 transition-all duration-200 flex items-center disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+                Refresh
+              </motion.button>
+            </div>
+          </motion.div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* System Health Overview */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="mb-8"
+        >
+          <h2 className="text-xl font-semibold text-slate-900 mb-4">System Health</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <StatCard
-              title="API Health"
+              title="Service Status"
               value={health.status}
-              subtitle={healthData ? `Uptime: ${formatUptime(healthData.uptime)}` : undefined}
+              subtitle={healthData ? `Uptime: ${formatUptime(healthData.uptime)}` : 'Checking...'}
               icon={health.color === 'success' ? CheckCircle : AlertCircle}
-              color={health.color as any}
+              color={health.color}
+              isLoading={loading && !healthData}
             />
-            
             <StatCard
               title="Service Readiness"
               value={`${readiness.ready}/${readiness.total}`}
-              subtitle="Services ready"
-              icon={Zap}
+              subtitle="External services ready"
+              icon={readiness.ready === readiness.total ? Shield : AlertCircle}
               color={readiness.ready === readiness.total ? 'success' : 'warning'}
-            />
-            
-            <StatCard
-              title="Active Sessions"
-              value="24"
-              subtitle="Current chat sessions"
-              icon={Users}
-              color="primary"
-              trend={{ value: 12, direction: 'up' }}
-            />
-            
-            <StatCard
-              title="Offers Generated"
-              value="156"
-              subtitle="This month"
-              icon={DollarSign}
-              color="success"
-              trend={{ value: 8, direction: 'up' }}
-            />
-          </>
-        )}
-      </div>
-
-      {/* Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Quick Actions */}
-        <motion.div
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.2 }}
-          className="card"
-        >
-          <h2 className="text-lg font-semibold text-slate-900 mb-4">Quick Actions</h2>
-          <div className="space-y-3">
-            <QuickAction
-              title="View Merchants"
-              description="See all registered merchants and their status"
-              icon={Users}
-              onClick={() => window.location.href = '/merchants'}
-              color="primary"
-            />
-            <QuickAction
-              title="Start Chat Session"
-              description="Begin a new conversation with Chad the chatbot"
-              icon={Activity}
-              onClick={() => window.location.href = '/chat'}
-              color="success"
-            />
-            <QuickAction
-              title="SMS Campaigns"
-              description="Create and manage SMS marketing campaigns"
-              icon={DollarSign}
-              onClick={() => window.location.href = '/campaigns'}
-              color="warning"
+              isLoading={loading && !readinessData}
             />
           </div>
         </motion.div>
 
-        {/* System Status */}
+        {/* Analytics Grid */}
         <motion.div
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.3 }}
-          className="card"
-        >
-          <h2 className="text-lg font-semibold text-slate-900 mb-4">System Status</h2>
-          {loading ? (
-            <div className="space-y-3">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="animate-pulse flex items-center space-x-3">
-                  <div className="w-3 h-3 bg-slate-200 rounded-full"></div>
-                  <div className="flex-1 h-4 bg-slate-200 rounded"></div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {readinessData && Object.entries(readinessData.checks).map(([service, ready]) => (
-                <div key={service} className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div className={`w-3 h-3 rounded-full ${
-                      ready ? 'bg-success-500' : 'bg-accent-500'
-                    }`}></div>
-                    <span className="text-sm text-slate-700 capitalize">
-                      {service.replace(/([A-Z])/g, ' $1').trim()}
-                    </span>
-                  </div>
-                  <span className={`status-indicator ${
-                    ready ? 'status-success' : 'status-error'
-                  }`}>
-                    {ready ? 'Ready' : 'Not Ready'}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </motion.div>
-      </div>
-
-      {/* Recent Activity */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4 }}
-        className="card"
-      >
-        <h2 className="text-lg font-semibold text-slate-900 mb-4">Recent Activity</h2>
-        <div className="space-y-4">
-          {[
-            { action: 'New chat session started', user: 'Ava M.', time: '2 minutes ago', type: 'success' },
-            { action: 'Offer generated successfully', user: 'Luis B.', time: '5 minutes ago', type: 'primary' },
-            { action: 'Background check completed', user: 'Sarah K.', time: '12 minutes ago', type: 'info' },
-            { action: 'Document uploaded', user: 'Mike R.', time: '18 minutes ago', type: 'warning' }
-          ].map((activity, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.5 + i * 0.1 }}
-              className="flex items-center space-x-4 p-3 rounded-lg hover:bg-slate-50 transition-colors"
-            >
-              <div className={`w-2 h-2 rounded-full bg-${activity.type}-500`}></div>
-              <div className="flex-1">
-                <p className="text-sm text-slate-900">{activity.action}</p>
-                <p className="text-xs text-slate-500">{activity.user}</p>
-              </div>
-              <div className="flex items-center text-xs text-slate-400">
-                <Clock className="w-3 h-3 mr-1" />
-                {activity.time}
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      </motion.div>
-
-      {/* External API Widgets Section */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.5 }}
-        className="space-y-6"
-      >
-        <h2 className="text-xl font-semibold text-slate-900">External API Integrations</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {exampleApiWidgets.map((config) => (
-            <ApiWidget
-              key={config.id}
-              config={config}
-              className="h-full"
-            />
-          ))}
-        </div>
-        
-        {/* API Integration Instructions */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
+          initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
-          className="card border-l-4 border-l-primary-500 bg-primary-50"
+          transition={{ delay: 0.2 }}
+          className="mb-8"
         >
-          <h3 className="text-lg font-semibold text-slate-900 mb-3">📡 REST API Widget Integration</h3>
-          <p className="text-sm text-slate-700 mb-4">
-            Easily integrate external REST APIs as dashboard widgets. Configure endpoints, data extraction paths, and refresh intervals.
-          </p>
-          
-          {/* API Configuration Example */}
-          <div className="bg-white rounded-lg border p-4 mb-4">
-            <h4 className="font-medium text-slate-800 mb-2">📋 Example Configuration:</h4>
-            <pre className="text-xs bg-slate-50 p-3 rounded border overflow-x-auto">
-{`const myApiWidget: ApiWidgetConfig = {
-  id: 'my-custom-api',
-  title: 'My Custom API',
-  endpoint: 'https://api.example.com/data',
-  method: 'GET',
-  refreshInterval: 60, // seconds
-  displayType: 'stat',
-  color: 'primary',
-  
-  // Data extraction (dot notation)
-  valuePath: 'data.value',      // Main value
-  subtitlePath: 'data.label',   // Subtitle
-  formatter: 'currency',        // currency|number|percentage|none
-  
-  // Optional headers
-  headers: {
-    'Authorization': 'Bearer your-token',
-    'X-API-Key': 'your-api-key'
-  }
-}`}
-            </pre>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-            <div>
-              <h4 className="font-medium text-slate-800 mb-1">Configuration Options:</h4>
-              <ul className="text-slate-600 space-y-1">
-                <li>• Custom API endpoints with path extraction</li>
-                <li>• Configurable refresh intervals</li>
-                <li>• HTTP headers & request customization</li>
-                <li>• Built-in data formatters (currency, number, %)</li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-medium text-slate-800 mb-1">Supported Features:</h4>
-              <ul className="text-slate-600 space-y-1">
-                <li>• Automatic error handling & retry logic</li>
-                <li>• Loading states & indicators</li>
-                <li>• Real-time data updates</li>
-                <li>• CORS-compliant requests</li>
-              </ul>
-            </div>
-          </div>
-
-          <div className="mt-4 p-3 bg-blue-50 rounded border border-blue-200">
-            <p className="text-xs text-blue-800">
-              <strong>💡 Tip:</strong> The demo widgets above use JSONPlaceholder API. Replace with your own endpoints!
-            </p>
+          <h2 className="text-xl font-semibold text-slate-900 mb-4">Analytics Overview</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {mockStats.map((stat, index) => (
+              <StatCard key={index} {...stat} />
+            ))}
           </div>
         </motion.div>
-      </motion.div>
+
+        {/* API Widgets Demo */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="mb-8"
+        >
+          <h2 className="text-xl font-semibold text-slate-900 mb-4">REST API Widgets</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+            {exampleApiWidgets.map((widget) => (
+              <ApiWidget key={widget.id} config={widget} />
+            ))}
+          </div>
+        </motion.div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Quick Actions */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200/50"
+          >
+            <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center">
+              <Zap className="w-5 h-5 mr-2 text-blue-600" />
+              Quick Actions
+            </h3>
+            <div className="grid gap-4">
+              <QuickAction
+                title="Analyze Statements"
+                description="Upload bank statements for analysis"
+                icon={BarChart3}
+                color="primary"
+                onClick={() => {}}
+              />
+              <QuickAction
+                title="Generate Offers"
+                description="Create loan offers based on analysis"
+                icon={DollarSign}
+                color="success"
+                onClick={() => {}}
+              />
+              <QuickAction
+                title="System Configuration"
+                description="Configure API endpoints and settings"
+                icon={Database}
+                color="warning"
+                onClick={() => {}}
+              />
+            </div>
+          </motion.div>
+
+          {/* API Configuration */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+            className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200/50"
+          >
+            <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center">
+              <Globe className="w-5 h-5 mr-2 text-indigo-600" />
+              REST API Integration
+            </h3>
+            
+            <div className="bg-gradient-to-r from-indigo-50 to-blue-50 rounded-xl p-4 border border-indigo-200/50 mb-4">
+              <h4 className="font-medium text-slate-800 mb-2">📋 Configuration Example</h4>
+              <pre className="text-xs bg-white/60 p-3 rounded-lg border border-white/20 overflow-x-auto">
+{`{
+  "id": "my-api-widget",
+  "title": "My Data Widget", 
+  "endpoint": "https://api.example.com/data",
+  "method": "GET",
+  "refreshInterval": 60,
+  "displayType": "stat",
+  "color": "primary",
+  "valuePath": "data.value",
+  "formatter": "currency"
+}`}
+              </pre>
+            </div>
+
+            <div className="space-y-3 text-sm">
+              <div className="flex items-start">
+                <div className="w-2 h-2 bg-green-500 rounded-full mt-2 mr-3 flex-shrink-0"></div>
+                <div>
+                  <span className="font-medium text-slate-800">Real-time Updates</span>
+                  <p className="text-slate-600">Automatic refresh with configurable intervals</p>
+                </div>
+              </div>
+              <div className="flex items-start">
+                <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 mr-3 flex-shrink-0"></div>
+                <div>
+                  <span className="font-medium text-slate-800">Data Formatters</span>
+                  <p className="text-slate-600">Currency, number, percentage formatting</p>
+                </div>
+              </div>
+              <div className="flex items-start">
+                <div className="w-2 h-2 bg-purple-500 rounded-full mt-2 mr-3 flex-shrink-0"></div>
+                <div>
+                  <span className="font-medium text-slate-800">Error Handling</span>
+                  <p className="text-slate-600">Graceful fallbacks and retry logic</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+              <p className="text-xs text-blue-800">
+                <strong>💡 Tip:</strong> The demo widgets above show live data from JSONPlaceholder API. Replace endpoints with your own!
+              </p>
+            </div>
+          </motion.div>
+        </div>
+      </div>
     </div>
   )
 }

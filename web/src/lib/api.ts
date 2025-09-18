@@ -13,9 +13,9 @@ class ApiClient {
     const config = this.getConfig()
     const url = `${config.baseUrl}${endpoint}`
     
-    const headers: HeadersInit = {
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      ...options.headers,
+      ...(options.headers as Record<string, string> || {}),
     }
     
     // Add API key if available
@@ -67,7 +67,7 @@ class ApiClient {
     const config = this.getConfig()
     const url = `${config.baseUrl}/api/bank/parse`
     
-    const headers: HeadersInit = {}
+    const headers: Record<string, string> = {}
     
     if (config.apiKey) {
       headers['Authorization'] = `Bearer ${config.apiKey}`
