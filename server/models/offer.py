@@ -12,7 +12,7 @@ class Offer(Base):
     __tablename__ = "offers"
     
     id = Column(String, primary_key=True)
-    deal_id = Column(String, ForeignKey("deals.id"), nullable=False, index=True)
+    deal_id = Column(String, ForeignKey("deals.id"), nullable=True, index=True)
     merchant_id = Column(String, ForeignKey("merchants.id"), nullable=True, index=True)  # Keep for compatibility
     payload_json = Column(Text, nullable=False)  # JSON offer details
     status = Column(String, default="pending")  # pending, accepted, declined, expired
