@@ -101,12 +101,12 @@ async def list_deals(
             "merchant": {
                 "id": merchant.id,
                 "legal_name": merchant.legal_name,
-                "phone": merchant.phone,
-                "email": merchant.email,
+                "phone": merchant.phone[-4:] if merchant.phone and len(merchant.phone) >= 4 else None,  # Safe mask phone
+                "email": (merchant.email.split('@')[0][:3] + "***@" + merchant.email.split('@')[1]) if merchant.email and '@' in merchant.email else None,  # Safe mask email
                 "state": merchant.state
             },
-            "metrics_summary": metrics.payload if metrics else None,
-            "background": json.loads(background.data_json) if background and background.data_json else None
+            "metrics_summary": None,  # Redacted for security
+            "background": None  # Redacted for security
         })
     
     return {"items": items}
@@ -115,7 +115,8 @@ async def list_deals(
 @router.get("/{deal_id}")
 async def get_deal(
     deal_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(verify_partner_key)
 ):
     """Get comprehensive deal details."""
     
@@ -167,27 +168,18 @@ async def get_deal(
         "merchant": {
             "id": merchant.id,
             "legal_name": merchant.legal_name,
-            "phone": merchant.phone,
-            "email": merchant.email,
+            "phone": merchant.phone[-4:] if merchant.phone else None,  # Redacted for security
+            "email": merchant.email.split('@')[0][:3] + "***@" + merchant.email.split('@')[1] if merchant.email else None,  # Redacted 
             "state": merchant.state,
-            "ein": merchant.ein,
-            "address": merchant.address,
+            "ein": "***-**-" + merchant.ein[-4:] if merchant.ein else None,  # Redacted EIN
+            "address": None,  # Redacted for security
             "city": merchant.city,
-            "zip": merchant.zip
+            "zip": merchant.zip[:3] + "**" if merchant.zip else None  # Partial zip
         },
         "intake": {
-            "fields": [
-                {
-                    "field_id": f.field_id,
-                    "value": f.value,
-                    "source": f.source,
-                    "last_verified_at": f.last_verified_at.isoformat() if f.last_verified_at else None,
-                    "confidence": f.confidence
-                }
-                for f in fields
-            ],
-            "missing": missing,
-            "confirm": confirm
+            "fields": [],  # Redacted field values for security
+            "missing": [],  # Redacted for security  
+            "confirm": []  # Redacted for security
         },
         "documents": [
             {

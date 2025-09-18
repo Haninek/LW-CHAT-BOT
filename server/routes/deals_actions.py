@@ -29,7 +29,7 @@ class UpdateDealStatusRequest(BaseModel):
 
 
 @router.post("/{deal_id}/accept")
-def accept_offer(deal_id: str = Path(...), offer: dict = Body(...), db: Session = Depends(get_db)):
+def accept_offer(deal_id: str = Path(...), offer: dict = Body(...), db: Session = Depends(get_db), _: bool = Depends(verify_partner_key)):
     """Accept a specific offer for a deal."""
     d = db.query(Deal).get(deal_id)
     if not d: 
