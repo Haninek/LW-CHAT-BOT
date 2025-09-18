@@ -72,7 +72,9 @@ export const useAppStore = create<AppState>()(
     (set, get) => ({
       // API Configuration
       apiConfig: {
-        baseUrl: (typeof window !== 'undefined' && (window as any).ENV?.VITE_API_BASE) || 'http://localhost:8000',
+        baseUrl: (typeof window !== 'undefined' && (window as any).ENV?.VITE_API_BASE) || 
+                 (typeof window !== 'undefined' && window.location.origin.replace(':5000', ':8000')) || 
+                 'http://localhost:8000',
         apiKey: (typeof window !== 'undefined' && (window as any).ENV?.VITE_API_KEY) || '',
         idempotencyEnabled: true
       },
