@@ -9,7 +9,6 @@ import {
   CheckCircle, 
   AlertCircle,
   Eye,
-  Zap,
   TrendingUp
 } from 'lucide-react'
 
@@ -132,7 +131,6 @@ export default function Campaigns() {
     }
   };
 
-  const selectedTemplate = SMS_TEMPLATES.find(t => t.id === templateId);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/30">
@@ -245,7 +243,7 @@ export default function Campaigns() {
                     className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-slate-50/50 hover:bg-white resize-none"
                   />
                   <p className="text-xs text-slate-500 mt-2">
-                    Available variables: {{lenderName}}, {{firstName}}, {{intakeLink}}
+                    Available variables: lenderName, firstName, intakeLink
                   </p>
                 </div>
               </div>

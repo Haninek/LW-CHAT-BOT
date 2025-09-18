@@ -127,7 +127,7 @@ function QuickAction({ title, description, icon: Icon, onClick, color = 'primary
   )
 }
 
-export function Dashboard() {
+export default function Dashboard() {
   const [healthData, setHealthData] = useState<HealthData | null>(null)
   const [readinessData, setReadinessData] = useState<ReadinessData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -442,4 +442,3 @@ export function Dashboard() {
   )
 }
 
-export default Dashboard
