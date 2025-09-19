@@ -37,10 +37,13 @@ class GenerateOffersRequest(BaseModel):
 async def generate_offers(
     req: Request,
     request: GenerateOffersRequest,
-    ide=Depends(require_idempotency),
+    tenant_id=Depends(require_idempotency),
     db: Session = Depends(get_db)
 ):
     """Generate funding offers for a deal based on latest metrics with underwriting guardrails."""
+    
+    if getattr(req.state, "idem_cached", None):
+        return req.state.idem_cached
     
     # Verify deal exists
     deal = db.query(Deal).filter(Deal.id == request.deal_id).first()
@@ -213,9 +216,21 @@ async def generate_offers(
             status="pending"
         )
         db.add(offer_record)
+    
+    # Log offer generation event
+    from models.event import Event
+    db.add(Event(
+        id=str(uuid.uuid4()),
+        tenant_id=tenant_id,
+        merchant_id=deal.merchant_id,
+        deal_id=request.deal_id,
+        type="offer.generated",
+        data_json=json.dumps({"count": len(offers), "underwriting_decision": underwriting_result.decision.value})
+    ))
+    
     db.commit()
     
-    return {
+    resp = {
         "offers": offers,
         "underwriting_decision": underwriting_result.decision.value,
         "underwriting_summary": {
@@ -235,3 +250,6 @@ async def generate_offers(
         },
         "overrides_applied": request.overrides.dict() if request.overrides else None
     }
+    
+    await store_idempotent(req, resp)
+    return resp

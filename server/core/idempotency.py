@@ -1,18 +1,23 @@
-import hashlib, json, asyncio
-from typing import Optional, Tuple
-from fastapi import Header, HTTPException, Request, Depends
-from redis.asyncio import from_url as redis_from_url
-from .config import get_settings
+import hashlib, json, time
+from typing import Optional
+from fastapi import Header, HTTPException, Request
+from core.config import get_settings
 
-_settings = get_settings()
-_redis = redis_from_url(_settings.REDIS_URL, encoding="utf-8", decode_responses=True)
-_TTL = 60 * 60  # 1h
+S = get_settings()
+_memory_store = {}
+
+try:
+    from redis.asyncio import from_url as redis_from_url
+    R = None if S.REDIS_URL.startswith("memory://") else redis_from_url(S.REDIS_URL, encoding="utf-8", decode_responses=True)
+except Exception:
+    R = None
+
+TTL = 3600
 
 async def capture_body(request: Request):
-    if not hasattr(request.state, "_body_cache"):
-        request.state._body_cache = await request.body()
+    request.state._body_cache = await request.body()
 
-def _make_key(tenant_id: str, path: str, idem: str, body: bytes) -> str:
+def _key(tenant_id: str, path: str, idem: str, body: bytes) -> str:
     h = hashlib.sha256(body or b"").hexdigest()
     return f"idem:{tenant_id}:{path}:{idem}:{h}"
 
@@ -21,19 +26,26 @@ async def require_idempotency(
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
 ):
-    if not idempotency_key:
-        raise HTTPException(400, detail="Missing Idempotency-Key")
-    if not tenant_id:
-        raise HTTPException(400, detail="Missing X-Tenant-ID")
-    key = _make_key(tenant_id, request.url.path, idempotency_key, request.state._body_cache or b"")
-    cached = await _redis.get(key)
-    if cached:
-        # short-circuit: route can check request.state.idem_cached
-        request.state.idem_cached = json.loads(cached)
-    request.state.idem_key = key
-    return (tenant_id, key)
+    if not idempotency_key: raise HTTPException(400, "Missing Idempotency-Key")
+    if not tenant_id: raise HTTPException(400, "Missing X-Tenant-ID")
+    request.state.tenant_id = tenant_id
+    key = _key(tenant_id, request.url.path, idempotency_key, getattr(request.state, "_body_cache", b""))
+
+    if R:
+        cached = await R.get(key)
+        if cached: request.state.idem_cached = json.loads(cached)
+        request.state.idem_key = key
+    else:
+        # in-memory fallback for Replit dev
+        row = _memory_store.get(key)
+        if row and (time.time() - row["ts"] < TTL):
+            request.state.idem_cached = row["val"]
+        request.state.idem_key = key
+
+    return tenant_id
 
 async def store_idempotent(request: Request, payload: dict):
     key = getattr(request.state, "idem_key", None)
     if not key: return
-    await _redis.set(key, json.dumps(payload), ex=_TTL)
+    if R: await R.set(key, json.dumps(payload), ex=TTL)
+    else: _memory_store[key] = {"val": payload, "ts": time.time()}

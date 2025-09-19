@@ -13,7 +13,7 @@ import uvicorn
 import os
 
 from core.config import get_settings
-from core.database import init_db
+from core.database import init_dev_sqlite_if_needed, Base
 from core.middleware import setup_middleware
 from routes import (
     health,
@@ -48,8 +48,8 @@ async def lifespan(app: FastAPI):
     """Application lifespan events"""
     logger.info("🚀 Starting Underwriting Wizard backend...")
     
-    # Initialize database
-    await init_db()
+    # Initialize database for development
+    init_dev_sqlite_if_needed(Base)
     
     # Create data directories
     os.makedirs("data/contracts", exist_ok=True)

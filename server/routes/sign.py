@@ -1,19 +1,30 @@
 """Contract signing endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+import hmac, hashlib, json
+from fastapi import APIRouter, Depends, HTTPException, Request, Header
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
 from typing import Optional
 import uuid
-import json
 
 from core.database import get_db
-from core.config import settings
-from core.security import verify_partner_key
+from core.config import get_settings
+from core.idempotency import capture_body, require_idempotency, store_idempotent
 from models.agreement import Agreement
 from models.event import Event
+from models.deal import Deal
 
 router = APIRouter()
+S = get_settings()
+
+def verify_dropboxsign(body: bytes, header: str) -> bool:
+    if not S.DROPBOXSIGN_WEBHOOK_SECRET: return False
+    expected = hmac.new(S.DROPBOXSIGN_WEBHOOK_SECRET.encode(), body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, (header or "").strip())
+
+def verify_docusign(body: bytes, header: str) -> bool:
+    if not S.DOCUSIGN_WEBHOOK_SECRET: return False
+    expected = hmac.new(S.DOCUSIGN_WEBHOOK_SECRET.encode(), body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, (header or "").strip())
 
 
 class SendContractRequest(BaseModel):
@@ -27,19 +38,19 @@ class WebhookRequest(BaseModel):
     event_type: str
 
 
-@router.post("/send")
+@router.post("/send", dependencies=[Depends(capture_body)])
 async def send_for_signature(
-    deal_id: str = Query(..., description="Deal ID"),
-    recipient_email: str = Query(..., description="Recipient email address"),
-    force: bool = Query(False, description="Force send even if background check not OK"),
-    template_id: Optional[str] = Query(None, description="Template ID"),
-    db: Session = Depends(get_db),
-    _: bool = Depends(verify_partner_key)
+    request: Request,
+    deal_id: str,
+    recipient_email: str,
+    force: bool = False,
+    tenant_id=Depends(require_idempotency),
+    db: Session = Depends(get_db)
 ):
     """Send document for digital signature with optional force override."""
     
-    from models.deal import Deal
-    from sqlalchemy import text
+    if getattr(request.state, "idem_cached", None):
+        return request.state.idem_cached
     
     deal = db.query(Deal).filter(Deal.id == deal_id).first()
     if not deal:
