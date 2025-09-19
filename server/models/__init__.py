@@ -12,9 +12,10 @@ from .connector import Connector
 from .deal import Deal
 from .document import Document
 from .metrics_snapshot import MetricsSnapshot
+from .consent import Consent
 
 __all__ = [
     "Merchant", "FieldState", "Tenant", "Mapping", "Intake", 
     "Offer", "Agreement", "BackgroundJob", "Event", "Connector",
-    "Deal", "Document", "MetricsSnapshot"
+    "Deal", "Document", "MetricsSnapshot", "Consent"
 ]

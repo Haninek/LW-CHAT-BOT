@@ -1,5 +1,5 @@
 from functools import lru_cache
-from pydantic import BaseSettings, AnyHttpUrl, Field
+from pydantic_settings import BaseSettings
 from typing import List
 
 class Settings(BaseSettings):
@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     DROPBOXSIGN_WEBHOOK_SECRET: str = ""
     CHERRY_API_KEY: str = ""
 
+    # Legacy fields (for compatibility)
+    ENCRYPTION_KEY: str = ""
+    API_KEY_PARTNER: str = ""
+    PLAID_ENV: str = "sandbox"
+    DOCUSIGN_BASE_URL: str = "https://demo.docusign.net"
+
     # Feature flags
     MOCK_MODE: bool = True
 
@@ -34,6 +40,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "ignore"
 
 @lru_cache()
 def get_settings() -> Settings:

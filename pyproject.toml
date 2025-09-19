@@ -37,6 +37,10 @@ dependencies = [
     "cryptography>=46.0.1",
     "aiohttp>=3.12.15",
     "arq>=0.26.3",
+    "boto3>=1.40.34",
+    "redis>=5.3.1",
+    "clamd>=1.0.2",
+    "alembic>=1.16.5",
 ]
 
 [project.optional-dependencies]

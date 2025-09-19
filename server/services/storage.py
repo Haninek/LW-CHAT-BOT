@@ -1,6 +1,6 @@
 import boto3, hashlib, mimetypes, io
 from botocore.client import Config
-from ..core.config import get_settings
+from core.config import get_settings
 
 S = get_settings()
 _s3 = boto3.client(

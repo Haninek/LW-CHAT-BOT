@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, Query, Request
 from sqlalchemy.orm import Session
-from ..core.database import get_db
-from ..models import BankDocument, MetricsSnapshot, Event, Deal, Merchant
-from ..services.storage import upload_private_bytes
-from ..services.antivirus import scan_bytes
+from core.database import get_db
+from models import Document, MetricsSnapshot, Event, Deal, Merchant
+from services.storage import upload_private_bytes
+from services.antivirus import scan_bytes
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -32,8 +32,8 @@ async def upload_bank_statements(
             raise HTTPException(400, detail=str(e))
         key = f"statements/{deal_id}/{f.filename}"
         meta = upload_private_bytes(content, key, "application/pdf")
-        doc = BankDocument(deal_id=deal_id, filename=f.filename,
-                           storage_key=meta["key"], bucket=meta["bucket"], checksum=meta["sha256"], parsed=False)
+        doc = Document(deal_id=deal_id, filename=f.filename,
+                       storage_key=meta["key"], bucket=meta["bucket"], checksum=meta["sha256"], parsed=False)
         db.add(doc); db.commit(); db.refresh(doc)
         stored.append({"id": doc.id, "filename": doc.filename})
 

@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 import uvicorn
 import os
 
-from core.config import settings
+from core.config import get_settings
 from core.database import init_db
 from core.middleware import setup_middleware
 from routes import (
@@ -64,6 +64,9 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     
+    # Get settings first
+    settings = get_settings()
+    
     app = FastAPI(
         title="Underwriting Wizard API",
         description="Multi-tenant automated underwriting and CRM integration platform",
@@ -78,7 +81,7 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=settings.cors_origins_list,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_methods=["*"],
         allow_headers=["*"],
     )
 
