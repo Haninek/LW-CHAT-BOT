@@ -14,6 +14,8 @@ class Event(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     type = Column(String, nullable=False, index=True)  # e.g. merchant.created, offer.generated
     merchant_id = Column(String, ForeignKey("merchants.id"), index=True)
+    tenant_id = Column(String, nullable=True, index=True)  # Multi-tenant support
+    deal_id = Column(String, nullable=True, index=True)    # Deal-centric tracking
     data_json = Column(Text)  # JSON event data
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     
