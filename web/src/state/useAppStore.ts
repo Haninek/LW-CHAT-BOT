@@ -70,11 +70,9 @@ interface AppState {
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
-      // API Configuration
+      // API Configuration - Use empty string for relative URLs to leverage Vite proxy
       apiConfig: {
-        baseUrl: (typeof window !== 'undefined' && (window as any).ENV?.VITE_API_BASE) || 
-                 (typeof window !== 'undefined' && window.location.origin.replace(':5000', ':8000')) || 
-                 'http://localhost:8000',
+        baseUrl: '',  // Use relative URLs so Vite proxy handles the routing
         apiKey: (typeof window !== 'undefined' && (window as any).ENV?.VITE_API_KEY) || '',
         idempotencyEnabled: true
       },
