@@ -193,7 +193,11 @@ export function useApiWidget(config: ApiWidgetConfig): WidgetState & { refetch: 
     return () => {
       // Cleanup
       if (abortControllerRef.current) {
-        abortControllerRef.current.abort()
+        try {
+          abortControllerRef.current.abort()
+        } catch (error) {
+          // Ignore abort errors during cleanup
+        }
       }
       if (intervalRef.current) {
         window.clearInterval(intervalRef.current)

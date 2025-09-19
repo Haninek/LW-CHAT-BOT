@@ -2,9 +2,19 @@ import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { BarChart, TrendingUp, DollarSign, Users } from 'lucide-react'
 import { ApiWidget } from '../components/ApiWidget'
+import { api } from '../lib/api'
 
 const Dashboard: React.FC = () => {
-  const [dashboardData, setDashboardData] = useState({
+  const [dashboardData, setDashboardData] = useState<{
+    health: any,
+    readiness: any,
+    stats: {
+      totalRevenue: string,
+      activeDeals: string,
+      completionRate: string,
+      customers: string
+    }
+  }>({
     health: null,
     readiness: null,
     stats: {
@@ -159,7 +169,8 @@ const Dashboard: React.FC = () => {
                 endpoint: "https://jsonplaceholder.typicode.com/posts",
                 refreshInterval: 30,
                 valuePath: 'length',
-                formatter: 'number'
+                formatter: 'number',
+                displayType: 'stat'
               }}
             />
             <ApiWidget
@@ -169,7 +180,8 @@ const Dashboard: React.FC = () => {
                 endpoint: "https://jsonplaceholder.typicode.com/users",
                 refreshInterval: 45,
                 valuePath: 'length',
-                formatter: 'number'
+                formatter: 'number',
+                displayType: 'stat'
               }}
             />
           </div>
@@ -182,7 +194,8 @@ const Dashboard: React.FC = () => {
                 endpoint: "https://jsonplaceholder.typicode.com/photos",
                 refreshInterval: 60,
                 valuePath: 'length',
-                formatter: 'number'
+                formatter: 'number',
+                displayType: 'stat'
               }}
             />
             <ApiWidget
@@ -192,7 +205,8 @@ const Dashboard: React.FC = () => {
                 endpoint: "https://jsonplaceholder.typicode.com/comments",
                 refreshInterval: 20,
                 valuePath: 'length',
-                formatter: 'number'
+                formatter: 'number',
+                displayType: 'stat'
               }}
             />
           </div>
