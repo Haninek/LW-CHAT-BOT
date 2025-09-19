@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 
 from core.database import get_db
-from core.security import verify_partner_key
+from core.auth import require_bearer
 from core.idempotency import capture_body, require_idempotency, store_idempotent
 from models.deal import Deal
 from models.merchant import Merchant
@@ -32,7 +32,7 @@ async def start_deal(
     request: StartDealRequest,
     db: Session = Depends(get_db),
     tenant_id=Depends(require_idempotency),
-    _: bool = Depends(verify_partner_key)
+    _: bool = Depends(require_bearer)
 ):
     """Start a deal for a merchant - reuse existing open deal if available."""
     
@@ -93,7 +93,7 @@ async def start_deal(
 async def get_deal(
     deal_id: str,
     db: Session = Depends(get_db),
-    _: bool = Depends(verify_partner_key)
+    _: bool = Depends(require_bearer)
 ):
     """Get deal details."""
     
@@ -114,7 +114,7 @@ async def get_deal(
 async def get_merchant_deals(
     merchant_id: str,
     db: Session = Depends(get_db),
-    _: bool = Depends(verify_partner_key)
+    _: bool = Depends(require_bearer)
 ):
     """Get all deals for a merchant."""
     
@@ -136,7 +136,7 @@ async def get_merchant_deals(
 async def recompute_deal_metrics(
     deal_id: str,
     db: Session = Depends(get_db),
-    _: bool = Depends(verify_partner_key)
+    _: bool = Depends(require_bearer)
 ):
     """Calculate and store financial metrics for a deal based on uploaded documents."""
     

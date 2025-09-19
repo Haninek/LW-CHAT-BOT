@@ -13,7 +13,7 @@ from core.config import get_settings
 from core.idempotency import capture_body, require_idempotency, store_idempotent
 
 settings = get_settings()
-from core.security import verify_partner_key
+from core.auth import require_bearer, require_partner
 from models.background_job import BackgroundJob
 from services.background_checks import (
     background_check_orchestrator,
@@ -54,7 +54,7 @@ async def start_comprehensive_background_check(
     request: BackgroundCheckRequest,
     db: Session = Depends(get_db),
     tenant_id=Depends(require_idempotency),
-    _: bool = Depends(verify_partner_key)
+    _: bool = Depends(require_bearer), __: bool = Depends(require_partner)
 ):
     """Start comprehensive background check with CLEAR, NYSCEF, and ownership verification."""
     
@@ -154,7 +154,7 @@ async def start_comprehensive_background_check(
 async def get_background_job(
     job_id: int,
     db: Session = Depends(get_db),
-    _: bool = Depends(verify_partner_key)
+    _: bool = Depends(require_bearer), __: bool = Depends(require_partner)
 ):
     """Get background check job status and flag-only results."""
     
@@ -177,7 +177,7 @@ async def get_background_job(
 
 
 @router.post("/check-types")
-async def get_available_check_types(_: bool = Depends(verify_partner_key)):
+async def get_available_check_types(_: bool = Depends(require_bearer), __: bool = Depends(require_partner)):
     """Get available background check types."""
     
     return {

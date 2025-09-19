@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import uuid
 
 from core.database import get_db
-from core.security import verify_partner_key
+from core.auth import require_bearer
 from core.idempotency import capture_body, require_idempotency, store_idempotent
 from models.intake import Intake
 from models.merchant import FieldState
@@ -32,7 +32,7 @@ async def start_intake(
     request: StartIntakeRequest,
     db: Session = Depends(get_db),
     tenant_id=Depends(require_idempotency),
-    _: bool = Depends(verify_partner_key)
+    _: bool = Depends(require_bearer)
 ):
     """Start new intake session."""
     
@@ -60,7 +60,7 @@ async def answer_field(
     request: AnswerFieldRequest,
     db: Session = Depends(get_db),
     tenant_id=Depends(require_idempotency),
-    _: bool = Depends(verify_partner_key)
+    _: bool = Depends(require_bearer)
 ):
     """Answer a field during intake and compute missing/confirm fields."""
     

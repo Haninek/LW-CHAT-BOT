@@ -1,0 +1,114 @@
+Add dev auth knobs to settings
+
+Edit server/core/config.py and add these fields inside Settings:
+
+# --- add these ---
+AUTH_OPTIONAL: bool = True            # allow all in dev (set False in staging/prod)
+AUTH_BEARER_TOKENS: str = "dev"       # CSV list of allowed Bearer tokens in dev
+PARTNER_KEYS: str = "demo"            # CSV list of allowed X-Partner-Key values
+# --- end add ---
+
+
+(Leave everything else the same.)
+
+2) Drop in a tiny auth dependency
+
+Create/replace server/core/auth.py:
+
+from typing import Set
+from fastapi import Header, HTTPException
+from server.core.config import get_settings
+
+def _csv(s: str) -> Set[str]:
+    return {x.strip() for x in (s or "").split(",") if x.strip()}
+
+def require_bearer(authorization: str | None = Header(None, alias="Authorization")):
+    s = get_settings()
+    if s.AUTH_OPTIONAL:
+        return
+    tokens = _csv(s.AUTH_BEARER_TOKENS)
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(401, "Authorization header required")
+    token = authorization.split(" ", 1)[1]
+    if tokens and token not in tokens:
+        raise HTTPException(401, "Invalid bearer token")
+
+def require_partner(x_partner_key: str | None = Header(None, alias="X-Partner-Key")):
+    s = get_settings()
+    if s.AUTH_OPTIONAL:
+        return
+    keys = _csv(s.PARTNER_KEYS)
+    if not x_partner_key:
+        raise HTTPException(401, "X-Partner-Key header required")
+    if keys and x_partner_key not in keys:
+        raise HTTPException(401, "Invalid partner key")
+
+3) Wire it (one-liners—likely already present)
+
+For all protected routers (deals, intake, offers, sign, sms), add:
+
+from fastapi import Depends
+from server.core.auth import require_bearer
+router = APIRouter(prefix="/api/deals", tags=["deals"], dependencies=[Depends(require_bearer)])
+
+
+For background endpoint(s), also require partner key:
+
+from server.core.auth import require_bearer, require_partner
+@router.post("/check", dependencies=[Depends(require_bearer), Depends(require_partner)])
+
+
+(If you already have dependencies in place, just ensure they call these functions or behave equivalently.)
+
+4) Replit secrets for dev (no 401s)
+
+Add these in Replit “Secrets” (or .env):
+
+DEBUG=true
+AUTH_OPTIONAL=true
+AUTH_BEARER_TOKENS=dev
+PARTNER_KEYS=demo
+
+
+In staging/prod, set AUTH_OPTIONAL=false, and replace the tokens with strong values you control.
+
+5) Re-run the smoke exactly like this
+# restart server cleanly
+pkill -f "uvicorn .*server\.main:app" >/dev/null 2>&1 || true
+uvicorn server.main:app --host 0.0.0.0 --port 8000 --reload >/tmp/uw.log 2>&1 &
+sleep 2
+
+# convenience headers
+AUTH='-H "Authorization: Bearer dev" -H "X-Tenant-ID:T1"'
+JSON='-H "Content-Type: application/json"'
+
+# 1) create a deal
+RESP=$(curl -s -X POST http://localhost:8000/api/deals/start $AUTH $JSON \
+  -H "Idempotency-Key:k1" \
+  -d '{"merchant_hint":{"phone":"+19735550188","legal_name":"Maple Deli LLC"},"create_if_missing":true}')
+MID=$(echo "$RESP" | python -c 'import sys,json;print(json.load(sys.stdin).get("merchant_id",""))')
+DID=$(echo "$RESP" | python -c 'import sys,json;print(json.load(sys.stdin).get("deal_id",""))')
+
+# 2) make 3 minimal PDFs and upload
+printf '%%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n' > one.pdf
+cp one.pdf two.pdf; cp one.pdf three.pdf
+curl -s -X POST "http://localhost:8000/api/documents/bank/upload?merchant_id=$MID&deal_id=$DID" \
+  $AUTH -H "Idempotency-Key:k2" \
+  -F "files=@one.pdf" -F "files=@two.pdf" -F "files=@three.pdf"
+
+# 3) offers
+curl -s -X POST "http://localhost:8000/api/deals/$DID/offers" $AUTH $JSON -H "Idempotency-Key:k3" -d "{}"
+
+# 4) background (partner key only matters when AUTH_OPTIONAL=false)
+curl -s -X POST "http://localhost:8000/api/background/check" \
+  $AUTH $JSON -H "X-Partner-Key: demo" -H "Idempotency-Key:k4" \
+  -d "{\"merchant_id\":\"$MID\",\"person\":{\"first_name\":\"A\",\"last_name\":\"B\"},\"business\":{\"legal_name\":\"Maple Deli LLC\"}}"
+
+# 5) accept
+curl -s -X POST "http://localhost:8000/api/deals/$DID/accept" $AUTH $JSON -H "Idempotency-Key:k5" -d "{}"
+
+# 6) public deals (no auth)
+curl -s http://localhost:8000/api/public/deals | head
+
+
+That’s it. With AUTH_OPTIONAL=true, your protected routes won’t 401 in dev; when you’re ready for staging, flip it to false and use real tokens in AUTH_BEARER_TOKENS and PARTNER_KEYS.

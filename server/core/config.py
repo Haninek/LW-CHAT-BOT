@@ -29,6 +29,12 @@ class Settings(BaseSettings):
 
     MOCK_MODE: bool = True              # local disk storage fallback
 
+    # --- add these ---
+    AUTH_OPTIONAL: bool = True            # allow all in dev (set False in staging/prod)
+    AUTH_BEARER_TOKENS: str = "dev"       # CSV list of allowed Bearer tokens in dev
+    PARTNER_KEYS: str = "demo"            # CSV list of allowed X-Partner-Key values
+    # --- end add ---
+
     @property
     def cors_origins_list(self) -> List[str]:
         if self.DEBUG and self.CORS_ORIGINS.strip() == "*":
