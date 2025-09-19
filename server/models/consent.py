@@ -2,7 +2,7 @@
 
 from sqlalchemy import Column, String, DateTime
 from datetime import datetime
-from core.database import Base
+from .base import Base
 
 
 class Consent(Base):

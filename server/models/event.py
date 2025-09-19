@@ -1,7 +1,7 @@
 """Event model for activity tracking."""
 
 from sqlalchemy import Column, String, DateTime, Text, Index, func
-from core.database import Base
+from .base import Base
 
 class Event(Base):
     __tablename__ = "events"

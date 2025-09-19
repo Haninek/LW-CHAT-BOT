@@ -1,0 +1,592 @@
+Replit Agent Build Brief — UW Wizard (Pilot-Ready Patch)
+
+You are Replit Agent. Apply all steps exactly, in order.
+
+0) Repo assumptions
+
+Backend at server/ (FastAPI)
+
+Models under server/models
+
+Routes under server/routes
+
+A base model module server/models/base.py that exposes Base
+
+You can create missing files/folders if they’re not present
+
+1) Dependencies & Run
+
+1.1 Add to requirements.txt (append if present):
+
+pydantic>=1.10
+pydantic-settings>=2.3
+python-multipart>=0.0.9
+redis>=5.0
+boto3>=1.34
+botocore>=1.34
+httpx>=0.27
+
+
+(Optional AV)
+
+clamd>=1.0
+
+
+1.2 Set Replit Secrets (or create .env)
+
+APP_NAME=UW Wizard
+DEBUG=true
+PORT=8000
+DATABASE_URL=sqlite:///./uwizard.db
+REDIS_URL=memory://local
+CORS_ORIGINS=*
+
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+S3_BUCKET=uwizard-private
+
+DOCUSIGN_WEBHOOK_SECRET=changeme
+DROPBOXSIGN_WEBHOOK_SECRET=changeme
+CHERRY_API_KEY=
+
+MOCK_MODE=true
+
+
+1.3 Set Run command (in .replit or Replit “Run” pane):
+
+uvicorn server.main:app --host 0.0.0.0 --port 8000 --reload
+
+2) Core config & DB
+
+2.1 Create/Replace server/core/config.py:
+
+from functools import lru_cache
+from pydantic_settings import BaseSettings
+from typing import List
+
+class Settings(BaseSettings):
+    APP_NAME: str = "UW Wizard"
+    DEBUG: bool = True
+    PORT: int = 8000
+
+    DATABASE_URL: str = "sqlite:///./uwizard.db"
+    REDIS_URL: str = "memory://local"   # use real Redis in staging/prod
+
+    CORS_ORIGINS: str = "*"             # dev-friendly; lock down in staging
+
+    AWS_REGION: str = "us-east-1"
+    AWS_ACCESS_KEY_ID: str = ""
+    AWS_SECRET_ACCESS_KEY: str = ""
+    S3_BUCKET: str = "uwizard-private"
+
+    DOCUSIGN_WEBHOOK_SECRET: str = ""
+    DROPBOXSIGN_WEBHOOK_SECRET: str = ""
+    CHERRY_API_KEY: str = ""
+
+    MOCK_MODE: bool = True              # local disk storage fallback
+
+    @property
+    def cors_origins_list(self) -> List[str]:
+        if self.DEBUG and self.CORS_ORIGINS.strip() == "*":
+            return ["*"]
+        return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
+
+    class Config:
+        env_file = ".env"
+        case_sensitive = True
+
+@lru_cache()
+def get_settings() -> Settings:
+    return Settings()
+
+
+2.2 Create/Replace server/core/database.py:
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from server.core.config import get_settings
+
+settings = get_settings()
+engine = create_engine(settings.DATABASE_URL, future=True)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+def init_dev_sqlite_if_needed(Base):
+    if settings.DEBUG and settings.DATABASE_URL.startswith("sqlite"):
+        Base.metadata.create_all(bind=engine)
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+3) Idempotency (Redis with in-memory fallback)
+
+3.1 Create/Replace server/core/idempotency.py:
+
+import hashlib, json, time
+from typing import Optional
+from fastapi import Header, HTTPException, Request
+from server.core.config import get_settings
+
+S = get_settings()
+_memory_store = {}
+
+try:
+    from redis.asyncio import from_url as redis_from_url
+    R = None if S.REDIS_URL.startswith("memory://") else redis_from_url(S.REDIS_URL, encoding="utf-8", decode_responses=True)
+except Exception:
+    R = None
+
+TTL = 3600
+
+async def capture_body(request: Request):
+    request.state._body_cache = await request.body()
+
+def _key(tenant_id: str, path: str, idem: str, body: bytes) -> str:
+    h = hashlib.sha256(body or b"").hexdigest()
+    return f"idem:{tenant_id}:{path}:{idem}:{h}"
+
+async def require_idempotency(
+    request: Request,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+    tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
+):
+    if not idempotency_key: raise HTTPException(400, "Missing Idempotency-Key")
+    if not tenant_id: raise HTTPException(400, "Missing X-Tenant-ID")
+    request.state.tenant_id = tenant_id
+    key = _key(tenant_id, request.url.path, idempotency_key, getattr(request.state, "_body_cache", b""))
+
+    if R:
+        cached = await R.get(key)
+        if cached: request.state.idem_cached = json.loads(cached)
+        request.state.idem_key = key
+    else:
+        row = _memory_store.get(key)
+        if row and (time.time() - row["ts"] < TTL):
+            request.state.idem_cached = row["val"]
+        request.state.idem_key = key
+    return tenant_id
+
+async def store_idempotent(request: Request, payload: dict):
+    key = getattr(request.state, "idem_key", None)
+    if not key: return
+    if R:
+        await R.set(key, json.dumps(payload), ex=TTL)
+    else:
+        _memory_store[key] = {"val": payload, "ts": time.time()}
+
+4) Storage & optional antivirus
+
+4.1 Create/Replace server/services/storage.py:
+
+import pathlib, hashlib
+import boto3
+from botocore.client import Config
+from server.core.config import get_settings
+
+S = get_settings()
+
+def _sha256(b: bytes) -> str:
+    h = hashlib.sha256(); h.update(b); return h.hexdigest()
+
+def upload_private_bytes(data: bytes, key: str, content_type: str = "application/octet-stream"):
+    if S.MOCK_MODE or not (S.AWS_ACCESS_KEY_ID and S.AWS_SECRET_ACCESS_KEY and S.S3_BUCKET):
+        base = pathlib.Path("./data/uploads"); base.mkdir(parents=True, exist_ok=True)
+        path = base / key.replace("/", "__")
+        path.write_bytes(data)
+        return {"bucket": "local", "key": str(path), "sha256": _sha256(data)}
+
+    s3 = boto3.client(
+        "s3",
+        region_name=S.AWS_REGION,
+        aws_access_key_id=S.AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=S.AWS_SECRET_ACCESS_KEY,
+        config=Config(signature_version="s3v4"),
+    )
+    s3.put_object(Bucket=S.S3_BUCKET, Key=key, Body=data, ContentType=content_type, ACL="private")
+    return {"bucket": S.S3_BUCKET, "key": key, "sha256": _sha256(data)}
+
+
+4.2 Create (optional) server/services/antivirus.py:
+
+import os
+try:
+    import clamd
+except Exception:
+    clamd = None
+
+def scan_bytes(data: bytes):
+    if not clamd:
+        return
+    host = os.getenv("CLAMD_HOST", "localhost")
+    port = int(os.getenv("CLAMD_PORT", "3310"))
+    cd = clamd.ClamdNetworkSocket(host, port)
+    res = cd.instream(data)
+    st = (res or {}).get("stream", ["OK"])[0]
+    if st != "OK":
+        raise ValueError(f"Virus detected: {st}")
+
+5) Models
+
+5.1 Create/Replace server/models/event.py:
+
+from sqlalchemy import Column, String, DateTime, Text, Index, func
+from .base import Base
+
+class Event(Base):
+    __tablename__ = "events"
+    id = Column(String, primary_key=True)
+    tenant_id = Column(String, index=True, nullable=True)
+    merchant_id = Column(String, nullable=True)
+    deal_id = Column(String, index=True, nullable=True)
+    type = Column(String, nullable=False)
+    data_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+
+Index("ix_events_type_created", Event.type, Event.created_at.desc())
+
+
+5.2 Ensure server/models/deal.py defaults to open:
+
+Find status column and set default="open" and nullable=False.
+
+Example:
+
+status = Column(String, default="open", nullable=False)
+
+6) Routes — exact changes
+6.A Apply idempotency wrapper to ALL these POST routes
+
+Add at top of each file:
+
+from fastapi import Depends, Request
+from server.core.idempotency import capture_body, require_idempotency, store_idempotent
+
+
+Then change each route decorator & handler signature:
+
+@router.post("<path>", dependencies=[Depends(capture_body)])
+async def handler(request: Request, tenant_id=Depends(require_idempotency), ...):
+    if getattr(request.state, "idem_cached", None):
+        return request.state.idem_cached
+    # ... existing logic ...
+    resp = {...}
+    await store_idempotent(request, resp)
+    return resp
+
+
+Apply to these endpoints:
+
+/api/deals/start
+
+/api/intake/start
+
+/api/intake/answer
+
+/api/documents/bank/upload (also see 6.B)
+
+/api/deals/{deal_id}/offers (also see 6.C)
+
+/api/background/run
+
+/api/sign/send (also see 6.D)
+
+/api/sms/cherry/send (ensure already wrapped)
+
+6.B Replace upload handler body in server/routes/documents.py:
+from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, Query, Request
+from sqlalchemy.orm import Session
+from server.core.database import get_db
+from server.core.idempotency import capture_body, require_idempotency, store_idempotent
+from server.services.storage import upload_private_bytes
+from server.services.antivirus import scan_bytes
+from server.models import Event, MetricsSnapshot, BankDocument
+import json
+
+router = APIRouter(prefix="/api/documents", tags=["documents"])
+MAX_PDF = 12 * 1024 * 1024
+
+@router.post("/bank/upload", dependencies=[Depends(capture_body)])
+async def upload_bank_statements(
+    request: Request,
+    merchant_id: str = Query(...),
+    deal_id: str = Query(...),
+    files: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+    tenant_id=Depends(require_idempotency),
+):
+    if getattr(request.state, "idem_cached", None):
+        return request.state.idem_cached
+    if len(files) != 3:
+        raise HTTPException(400, "Exactly 3 PDF statements are required")
+
+    stored = []
+    for f in files:
+        if f.content_type not in ("application/pdf", "application/x-pdf"):
+            raise HTTPException(400, f"{f.filename}: only PDF allowed")
+        content = await f.read()
+        if len(content) > MAX_PDF:
+            raise HTTPException(400, f"{f.filename}: too large")
+        scan_bytes(content)
+        key = f"statements/{deal_id}/{f.filename}"
+        meta = upload_private_bytes(content, key, "application/pdf")
+        rec = BankDocument(deal_id=deal_id, filename=f.filename,
+                           storage_key=meta["key"], bucket=meta["bucket"], checksum=meta["sha256"], parsed=False)
+        db.add(rec); db.commit(); db.refresh(rec)
+        stored.append({"id": rec.id, "filename": rec.filename})
+
+    # stub metrics so flow continues; replace with your parser
+    metrics = {"avg_monthly_revenue": 80000, "avg_daily_balance_3m": 12000, "total_nsf_3m": 1, "total_days_negative_3m": 2}
+    db.add(MetricsSnapshot(deal_id=deal_id, source="statements", payload=metrics))
+    db.add(Event(tenant_id=tenant_id, merchant_id=merchant_id, deal_id=deal_id,
+                 type="metrics.ready", data_json=json.dumps(metrics)))
+    db.commit()
+    resp = {"ok": True, "documents": stored, "metrics": metrics}
+    await store_idempotent(request, resp)
+    return resp
+
+6.C Replace offers endpoint in server/routes/offers.py:
+import json
+from fastapi import APIRouter, Depends, Request, HTTPException
+from sqlalchemy.orm import Session
+from server.core.idempotency import capture_body, require_idempotency, store_idempotent
+from server.core.database import get_db
+from server.models import Deal, Offer, Event
+from server.services.underwriting import generate_offers
+
+router = APIRouter(prefix="/api/deals", tags=["offers"])
+
+@router.post("/{deal_id}/offers", dependencies=[Depends(capture_body)])
+async def make_offers(request: Request, deal_id: str, tenant_id=Depends(require_idempotency), db: Session = Depends(get_db)):
+    if getattr(request.state, "idem_cached", None):
+        return request.state.idem_cached
+    deal = db.query(Deal).get(deal_id)
+    if not deal: raise HTTPException(404, "deal not found")
+
+    offers = generate_offers(deal_id, db)
+    if isinstance(offers, dict) and offers.get("blocked"):
+        resp = {"blocked": True, "reason": offers.get("reason")}
+        await store_idempotent(request, resp)
+        return resp
+
+    db.add(Event(tenant_id=tenant_id, merchant_id=deal.merchant_id, deal_id=deal_id,
+                 type="offer.generated", data_json=json.dumps({"count": len(offers)})))
+    for o in offers:
+        db.add(Offer(deal_id=deal_id, payload=o))
+    db.commit()
+    resp = {"offers": offers}
+    await store_idempotent(request, resp)
+    return resp
+
+6.D Replace sign endpoints in server/routes/sign.py:
+import hmac, hashlib, json
+from datetime import datetime
+from fastapi import APIRouter, Depends, HTTPException, Request, Header
+from sqlalchemy.orm import Session
+from server.core.idempotency import capture_body, require_idempotency, store_idempotent
+from server.core.config import get_settings
+from server.core.database import get_db
+from server.models import Deal, Event
+
+S = get_settings()
+router = APIRouter(prefix="/api/sign", tags=["sign"])
+
+def verify_dropboxsign(body: bytes, header: str) -> bool:
+    if not S.DROPBOXSIGN_WEBHOOK_SECRET: return False
+    expected = hmac.new(S.DROPBOXSIGN_WEBHOOK_SECRET.encode(), body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, (header or "").strip())
+
+def verify_docusign(body: bytes, header: str) -> bool:
+    if not S.DOCUSIGN_WEBHOOK_SECRET: return False
+    expected = hmac.new(S.DOCUSIGN_WEBHOOK_SECRET.encode(), body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, (header or "").strip())
+
+@router.post("/send", dependencies=[Depends(capture_body)])
+async def send_for_signature(request: Request, deal_id: str, recipient_email: str, force: bool = False,
+                             tenant_id=Depends(require_idempotency), db: Session = Depends(get_db)):
+    if getattr(request.state, "idem_cached", None):
+        return request.state.idem_cached
+    d = db.query(Deal).get(deal_id)
+    if not d: raise HTTPException(404, "Deal not found")
+
+    if not force:
+        row = db.execute(
+            "SELECT data_json FROM events WHERE deal_id=:did AND type='background.result' ORDER BY created_at DESC LIMIT 1",
+            {"did": deal_id}
+        ).first()
+        if not row: raise HTTPException(400, "Background missing; force=true to override")
+        status = (json.loads(row[0] or "{}")).get("status")
+        if status != "OK": raise HTTPException(400, f"Background not OK ({status}); force=true to override")
+
+    db.add(Event(tenant_id=tenant_id, merchant_id=d.merchant_id, deal_id=deal_id,
+                 type="sign.sent", data_json=json.dumps({"to": recipient_email, "force": force})))
+    db.commit()
+    resp = {"ok": True}
+    await store_idempotent(request, resp)
+    return resp
+
+@router.post("/webhook", dependencies=[Depends(capture_body)])
+async def signer_webhook(request: Request, db: Session = Depends(get_db),
+                         x_dropbox_sign_signature: str = Header(None),
+                         x_docusign_signature_1: str = Header(None)):
+    raw = await request.body()
+    if not (verify_dropboxsign(raw, x_dropbox_sign_signature) or verify_docusign(raw, x_docusign_signature_1)):
+        raise HTTPException(401, "Invalid signature")
+
+    payload = await request.json()
+    deal_id = payload.get("deal_id")
+    if not deal_id:
+        raise HTTPException(400, "Missing deal_id")
+    event_id = payload.get("event_id") or hashlib.sha256(raw).hexdigest()
+
+    exists = db.execute(
+        "SELECT 1 FROM events WHERE type='sign.signed' AND data_json LIKE :needle",
+        {"needle": f"%{event_id}%"}
+    ).first()
+    if exists: return {"ok": True}
+
+    d = db.query(Deal).get(deal_id)
+    db.add(Event(tenant_id=None, merchant_id=getattr(d, "merchant_id", None), deal_id=deal_id,
+                 type="sign.signed", data_json=json.dumps({"event_id": event_id, "at": datetime.utcnow().isoformat()})))
+    db.commit()
+    return {"ok": True}
+
+6.E Edit SMS rate-limit fallback in server/routes/sms.py
+
+At top (imports section) add:
+
+from server.core.config import get_settings
+S = get_settings()
+try:
+    from redis.asyncio import from_url as redis_from_url
+    R = None if S.REDIS_URL.startswith("memory://") else redis_from_url(S.REDIS_URL, encoding="utf-8", decode_responses=True)
+except Exception:
+    R = None
+_memory = {}
+
+
+Replace your limiter with:
+
+import time, uuid
+async def rate_limit(tenant_id: str, count: int, limit: int = 2000, window_sec: int = 60):
+    if R:
+        key = f"rt:sms:{tenant_id}"
+        now = int(time.time())
+        await R.zremrangebyscore(key, 0, now - window_sec)
+        await R.zadd(key, {str(uuid.uuid4()): now})
+        await R.expire(key, window_sec + 5)
+        size = await R.zcard(key)
+        if int(size) + count > limit:
+            raise HTTPException(429, "Rate limit exceeded")
+        return
+    key = f"rt:sms:{tenant_id}:{int(time.time())//window_sec}"
+    _memory[key] = _memory.get(key, 0) + count
+    if _memory[key] > limit:
+        raise HTTPException(429, "Rate limit exceeded")
+
+
+Ensure all Event( here use data_json=json.dumps({...}).
+
+7) Standardize all Event writes
+
+Run a project-wide refactor: replace any Event(..., data= with Event(..., data_json=...).
+Always include deal_id and tenant_id when known:
+
+import json
+Event(tenant_id=getattr(request.state, "tenant_id", None),
+      merchant_id=merchant_id, deal_id=deal_id,
+      type="...", data_json=json.dumps(payload))
+
+8) Main — CORS + init dev DB + include routers
+
+Open server/main.py and ensure:
+
+from server.core.config import get_settings
+from fastapi.middleware.cors import CORSMiddleware
+from server.core.database import init_dev_sqlite_if_needed
+from server.models.base import Base
+# plus: from server.routes import deals, intake, documents, offers, background, sign, sms, admin
+
+settings = get_settings()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins_list,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+init_dev_sqlite_if_needed(Base)
+
+# app.include_router(deals.router)
+# app.include_router(intake.router)
+# app.include_router(documents.router)
+# app.include_router(offers.router)
+# app.include_router(background.router)
+# app.include_router(sign.router)
+# app.include_router(sms.router)
+# app.include_router(admin.router)
+
+9) Smoke tests (run these in Replit shell)
+
+Replace MID/DID as you go.
+
+# health
+curl -s http://localhost:8000/api/healthz
+
+# start deal (idempotent)
+curl -s -X POST http://localhost:8000/api/deals/start \
+  -H "Content-Type: application/json" -H "X-Tenant-ID:T1" -H "Idempotency-Key:k1" \
+  -d '{"merchant_hint":{"phone":"+19735550188","legal_name":"Maple Deli LLC"},"create_if_missing":true}'
+
+# set MID and DID from response, then replay same request -> identical response expected
+
+# intake answer (ask-only)
+curl -s -X POST http://localhost:8000/api/intake/answer \
+  -H "Content-Type: application/json" -H "X-Tenant-ID:T1" -H "Idempotency-Key:k2" \
+  -d "{\"merchant_id\":\"$MID\",\"deal_id\":\"$DID\",\"source\":\"intake\",\"answers\":[{\"field_id\":\"owner.ssn_last4\",\"value\":\"1234\"}]}"
+
+# upload exactly 3 PDFs (saved to ./data/uploads in dev)
+curl -s -X POST "http://localhost:8000/api/documents/bank/upload?merchant_id=$MID&deal_id=$DID" \
+  -F "files=@one.pdf" -F "files=@two.pdf" -F "files=@three.pdf" \
+  -H "X-Tenant-ID:T1" -H "Idempotency-Key:k3"
+
+# offers (returns + event)
+curl -s -X POST "http://localhost:8000/api/deals/$DID/offers" \
+  -H "Content-Type: application/json" -H "X-Tenant-ID:T1" -H "Idempotency-Key:k4" -d "{}"
+
+# background (flags-only)
+curl -s -X POST "http://localhost:8000/api/background/run?merchant_id=$MID&deal_id=$DID" \
+  -H "X-Tenant-ID:T1" -H "Idempotency-Key:k5"
+
+# sign (gated on background status; force overrides)
+curl -s -X POST "http://localhost:8000/api/sign/send?deal_id=$DID&recipient_email=owner@example.com&force=false" \
+  -H "X-Tenant-ID:T1" -H "Idempotency-Key:k6"
+
+# sms send (rate-limited + STOP footer)
+curl -s -X POST http://localhost:8000/api/sms/cherry/send \
+  -H "Content-Type: application/json" -H "X-Tenant-ID:T1" -H "Idempotency-Key:k7" \
+  -d '{"campaignName":"Pilot","messages":[{"to":"+19735550188","body":"Hi from UW Wizard","merchant_id":"'$MID'"}]}'
+
+# inbound STOP
+curl -s -X POST http://localhost:8000/api/sms/cherry/webhook \
+  -H "Content-Type: application/json" \
+  -d '{"type":"inbound","from":"+19735550188","text":"STOP"}'
+
+
+Pass criteria
+
+Replaying any POST with the same Idempotency-Key returns the same response with no duplicate DB writes.
+
+Upload accepts exactly 3 PDFs, saves to ./data/uploads (dev), returns metrics.
+
+Offers returns [ ... ] and logs offer.generated (with this deal_id).
+
+Background writes background.result; sign/send blocks unless status == "OK" (or force=true).
+
+SMS send returns a queued count; sms.stop event logged on STOP webhook.
+
+If any single step fails, report the failing endpoint and the error text — I’ll give you the exact file/line patch to apply.

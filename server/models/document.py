@@ -3,7 +3,7 @@
 from sqlalchemy import Column, String, Integer, Float, DateTime, Text, ForeignKey, LargeBinary
 from sqlalchemy.orm import relationship
 from datetime import datetime
-from core.database import Base
+from .base import Base
 
 
 class Document(Base):

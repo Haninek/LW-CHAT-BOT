@@ -8,10 +8,9 @@ class Settings(BaseSettings):
     PORT: int = 8000
 
     DATABASE_URL: str = "sqlite:///./uwizard.db"
-    REDIS_URL: str = "memory://local"  # use real Redis URL in staging/prod
+    REDIS_URL: str = "memory://local"   # use real Redis in staging/prod
 
-    # Dev: allow * ; Prod: set explicit origins
-    CORS_ORIGINS: str = "*"
+    CORS_ORIGINS: str = "*"             # dev-friendly; lock down in staging
 
     AWS_REGION: str = "us-east-1"
     AWS_ACCESS_KEY_ID: str = ""
@@ -28,7 +27,7 @@ class Settings(BaseSettings):
     PLAID_ENV: str = "sandbox"
     DOCUSIGN_BASE_URL: str = "https://demo.docusign.net"
 
-    MOCK_MODE: bool = True
+    MOCK_MODE: bool = True              # local disk storage fallback
 
     @property
     def cors_origins_list(self) -> List[str]:

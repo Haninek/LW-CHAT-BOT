@@ -4,7 +4,7 @@ from sqlalchemy import Column, String, DateTime, Integer, Float, Text, ForeignKe
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
-from core.database import Base
+from .base import Base
 
 
 class Merchant(Base):

@@ -1,7 +1,6 @@
 """Database configuration and initialization."""
 
 from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import logging
 from core.config import get_settings
@@ -30,10 +29,8 @@ def create_engine_with_fallback():
 
 engine = create_engine_with_fallback()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
 
 def init_dev_sqlite_if_needed(Base):
-    # Dev convenience: only auto-create for sqlite AND DEBUG=true
     settings = get_settings()
     if settings.DEBUG and settings.DATABASE_URL.startswith("sqlite"):
         Base.metadata.create_all(bind=engine)
