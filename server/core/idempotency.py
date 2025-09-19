@@ -32,9 +32,16 @@ async def require_idempotency(
     key = _key(tenant_id, request.url.path, idempotency_key, getattr(request.state, "_body_cache", b""))
 
     if R:
-        cached = await R.get(key)
-        if cached: request.state.idem_cached = json.loads(cached)
-        request.state.idem_key = key
+        try:
+            cached = await R.get(key)
+            if cached: request.state.idem_cached = json.loads(cached)
+            request.state.idem_key = key
+        except Exception:
+            # Fall back to memory on Redis connection errors
+            row = _memory_store.get(key)
+            if row and (time.time() - row["ts"] < TTL):
+                request.state.idem_cached = row["val"]
+            request.state.idem_key = key
     else:
         # in-memory fallback for Replit dev
         row = _memory_store.get(key)
@@ -47,5 +54,11 @@ async def require_idempotency(
 async def store_idempotent(request: Request, payload: dict):
     key = getattr(request.state, "idem_key", None)
     if not key: return
-    if R: await R.set(key, json.dumps(payload), ex=TTL)
-    else: _memory_store[key] = {"val": payload, "ts": time.time()}
+    if R:
+        try:
+            await R.set(key, json.dumps(payload), ex=TTL)
+        except Exception:
+            # Fall back to memory on Redis connection errors
+            _memory_store[key] = {"val": payload, "ts": time.time()}
+    else:
+        _memory_store[key] = {"val": payload, "ts": time.time()}

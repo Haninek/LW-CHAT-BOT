@@ -10,7 +10,7 @@ import uuid
 
 from core.database import get_db
 from core.config import get_settings
-from core.idempotency import capture_body, require_idempotency, store_idempotent
+from core.idempotency import capture_body, require_idempotency, store_idempotent, R, _memory_store
 from models.agreement import Agreement
 from models.event import Event
 from models.deal import Deal
@@ -137,12 +137,7 @@ async def signing_webhook(
 ):
     """Handle signing webhook from DocuSign/Dropbox Sign with signature verification."""
     
-    # Check for webhook deduplication first
-    dedup_key = f"webhook:{webhook_data.envelope_id}:{webhook_data.event_type}"
-    if getattr(request.state, "idem_cache", {}).get(dedup_key):
-        return {"status": "already_processed"}
-    
-    # Verify webhook signature for security
+    # Verify webhook signature for security FIRST
     body = await request.body()
     verified = False
     
@@ -158,6 +153,29 @@ async def signing_webhook(
         if not S.DEBUG:  # Only allow unverified webhooks in debug mode
             raise HTTPException(status_code=401, detail="Missing webhook signature")
     
+    # Check for webhook deduplication AFTER verification 
+    dedup_key = f"wh:{webhook_data.envelope_id}:{webhook_data.event_type}"
+    
+    if R:
+        try:
+            # Use Redis NX (not exists) to atomically check and set
+            if not await R.set(dedup_key, "1", ex=3600, nx=True):
+                return {"status": "already_processed"}
+        except Exception:
+            # Fall back to memory store
+            import time
+            now = time.time()
+            if dedup_key in _memory_store and (now - _memory_store[dedup_key]["ts"]) < 3600:
+                return {"status": "already_processed"}
+            _memory_store[dedup_key] = {"val": "1", "ts": now}
+    else:
+        # Use memory store directly
+        import time
+        now = time.time()
+        if dedup_key in _memory_store and (now - _memory_store[dedup_key]["ts"]) < 3600:
+            return {"status": "already_processed"}
+        _memory_store[dedup_key] = {"val": "1", "ts": now}
+    
     # Find agreement by envelope ID
     agreement = db.query(Agreement).filter(
         Agreement.envelope_id == webhook_data.envelope_id
@@ -165,6 +183,23 @@ async def signing_webhook(
     
     if not agreement:
         raise HTTPException(status_code=404, detail="Agreement not found")
+        
+    # Look up deal_id from the original sign.sent event for this envelope (portable approach)
+    sign_events = db.query(Event).filter(Event.type == "sign.sent").all()
+    
+    deal_id = None
+    tenant_id = agreement.merchant_id  # Default fallback
+    
+    # Parse in Python for SQLite/Postgres compatibility
+    for event in sign_events:
+        try:
+            event_data = json.loads(event.data_json)
+            if event_data.get("envelope_id") == webhook_data.envelope_id:
+                deal_id = event_data.get("deal_id")
+                tenant_id = event.tenant_id or agreement.merchant_id
+                break
+        except:
+            continue  # Skip malformed events
     
     # Update agreement status
     if webhook_data.status in ["completed", "signed"]:
@@ -176,8 +211,8 @@ async def signing_webhook(
         event = Event(
             id=str(uuid.uuid4()),
             type="contract.completed", 
-            tenant_id=agreement.merchant_id,  # Use merchant_id as tenant for events
-            deal_id=None,  # Could be derived from agreement if needed
+            tenant_id=tenant_id,  # Use proper tenant from sign event
+            deal_id=deal_id,  # Use deal_id from original sign event
             data_json=json.dumps({
                 "agreement_id": agreement.id,
                 "envelope_id": webhook_data.envelope_id,
@@ -193,8 +228,8 @@ async def signing_webhook(
         event = Event(
             id=str(uuid.uuid4()),
             type=f"contract.{webhook_data.status}",
-            tenant_id=agreement.merchant_id,  # Use merchant_id as tenant for events
-            deal_id=None,  # Could be derived from agreement if needed
+            tenant_id=tenant_id,  # Use proper tenant from sign event
+            deal_id=deal_id,  # Use deal_id from original sign event
             data_json=json.dumps({
                 "agreement_id": agreement.id,
                 "envelope_id": webhook_data.envelope_id,
@@ -204,9 +239,5 @@ async def signing_webhook(
         db.add(event)
     
     db.commit()
-    
-    # Mark as processed to prevent duplicates
-    if hasattr(request.state, "idem_cache"):
-        request.state.idem_cache[dedup_key] = True
     
     return {"status": "processed"}
