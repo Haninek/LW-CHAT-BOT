@@ -31,7 +31,8 @@ from routes import (
     sign,
     events,
     admin,
-    queue
+    queue,
+    sms
 )
 
 # Import deals extensions separately  
@@ -106,6 +107,7 @@ def create_app() -> FastAPI:
     app.include_router(events.router, prefix="/api/events", tags=["events"])
     app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
     app.include_router(queue.router, prefix="/api/queue", tags=["queue"])
+    app.include_router(sms.router)
     # Public deals endpoints for frontend (read-only, limited data)
     app.include_router(deals_read.router, prefix="/api/public/deals", tags=["deals.public"])
     app.include_router(deals_actions.router, prefix="/api/deals", tags=["deals.actions"])
