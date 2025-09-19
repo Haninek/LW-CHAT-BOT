@@ -253,3 +253,97 @@ async def generate_offers(
     
     await store_idempotent(req, resp)
     return resp
+
+
+@router.post("/deals/{deal_id}/accept", dependencies=[Depends(capture_body)])
+async def accept_offer(
+    req: Request,
+    deal_id: str,
+    db: Session = Depends(get_db),
+    tenant_id=Depends(require_idempotency)
+):
+    """Accept an offer for a deal with idempotency and event logging."""
+    
+    if getattr(req.state, "idem_cached", None):
+        return req.state.idem_cached
+    
+    # Verify deal exists
+    deal = db.query(Deal).filter(Deal.id == deal_id).first()
+    if not deal:
+        return {"error": "Deal not found", "deal_id": deal_id}
+    
+    # Update deal status
+    deal.status = "accepted"
+    
+    # Log offer acceptance event
+    from models.event import Event
+    db.add(Event(
+        id=str(uuid.uuid4()),
+        tenant_id=tenant_id,
+        merchant_id=deal.merchant_id,
+        deal_id=deal_id,
+        type="offer.accepted",
+        data_json=json.dumps({
+            "deal_id": deal_id,
+            "tenant_id": tenant_id,
+            "timestamp": deal.updated_at.isoformat() if deal.updated_at else None
+        })
+    ))
+    
+    db.commit()
+    
+    resp = {
+        "deal_id": deal_id,
+        "status": "accepted",
+        "message": "Offer accepted successfully"
+    }
+    
+    await store_idempotent(req, resp)
+    return resp
+
+
+@router.post("/deals/{deal_id}/decline", dependencies=[Depends(capture_body)])
+async def decline_offer(
+    req: Request,
+    deal_id: str,
+    db: Session = Depends(get_db),
+    tenant_id=Depends(require_idempotency)
+):
+    """Decline an offer for a deal with idempotency and event logging."""
+    
+    if getattr(req.state, "idem_cached", None):
+        return req.state.idem_cached
+    
+    # Verify deal exists
+    deal = db.query(Deal).filter(Deal.id == deal_id).first()
+    if not deal:
+        return {"error": "Deal not found", "deal_id": deal_id}
+    
+    # Update deal status
+    deal.status = "declined"
+    
+    # Log offer decline event
+    from models.event import Event
+    db.add(Event(
+        id=str(uuid.uuid4()),
+        tenant_id=tenant_id,
+        merchant_id=deal.merchant_id,
+        deal_id=deal_id,
+        type="offer.declined",
+        data_json=json.dumps({
+            "deal_id": deal_id,
+            "tenant_id": tenant_id,
+            "timestamp": deal.updated_at.isoformat() if deal.updated_at else None
+        })
+    ))
+    
+    db.commit()
+    
+    resp = {
+        "deal_id": deal_id,
+        "status": "declined",
+        "message": "Offer declined successfully"
+    }
+    
+    await store_idempotent(req, resp)
+    return resp

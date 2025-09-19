@@ -22,7 +22,7 @@ from services.background_checks import (
     CheckType
 )
 
-router = APIRouter()
+router = APIRouter(prefix="/api/background", tags=["background"])
 
 
 class PersonData(BaseModel):
