@@ -1,0 +1,586 @@
+Goal: make the backend pilot-ready on Replit by fixing:
+
+config & CORS (FAIL)
+
+events schema (deal_id, tenant_id) + backfill (FAIL)
+
+idempotency on all POSTs (FAIL)
+
+offers route return/event (FAIL)
+
+signing webhook signature verify + idempotency + deal_id (FAIL)
+
+document schema migration table name (FAIL)
+
+status enum normalization (WARN)
+
+DB layer uses DATABASE_URL & sane create_all in dev (WARN)
+
+S3 dev fallback storage (WARN)
+
+Assumes FastAPI under server/, Alembic under alembic/.
+
+0) Dependencies & ENV
+
+Add to requirements.txt
+
+redis>=5.0
+boto3>=1.34
+botocore>=1.34
+httpx>=0.27
+pydantic>=1.10
+python-multipart>=0.0.9
+
+
+Optional AV:
+
+clamd>=1.0
+
+
+Replit Secrets / .env
+
+APP_NAME=UW Wizard
+DEBUG=true
+PORT=8000
+DATABASE_URL=sqlite:///./uwizard.db
+REDIS_URL=memory://local             # Upstash URL works too; memory:// = in-memory fallback
+CORS_ORIGINS=http://localhost:5173,http://localhost:3000
+
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+S3_BUCKET=uwizard-private
+
+DOCUSIGN_WEBHOOK_SECRET=changeme
+DROPBOXSIGN_WEBHOOK_SECRET=changeme
+CHERRY_API_KEY=
+
+MOCK_MODE=true                       # local file storage fallback
+
+1) CONFIG / CORS (FIX)
+
+REPLACE server/core/config.py
+
+from functools import lru_cache
+from pydantic import BaseSettings
+from typing import List
+
+class Settings(BaseSettings):
+    APP_NAME: str = "UW Wizard"
+    DEBUG: bool = True
+    PORT: int = 8000
+
+    DATABASE_URL: str = "sqlite:///./uwizard.db"
+    REDIS_URL: str = "memory://local"  # use Upstash URL in prod
+
+    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+
+    AWS_REGION: str = "us-east-1"
+    AWS_ACCESS_KEY_ID: str = ""
+    AWS_SECRET_ACCESS_KEY: str = ""
+    S3_BUCKET: str = "uwizard-private"
+
+    DOCUSIGN_WEBHOOK_SECRET: str = ""
+    DROPBOXSIGN_WEBHOOK_SECRET: str = ""
+    CHERRY_API_KEY: str = ""
+
+    MOCK_MODE: bool = True
+
+    @property
+    def cors_origins_list(self) -> List[str]:
+        # loosen for Replit preview if needed:
+        if self.DEBUG and "*" in self.CORS_ORIGINS:
+            return ["*"]
+        return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
+
+    class Config:
+        env_file = ".env"
+        case_sensitive = True
+
+@lru_cache()
+def get_settings() -> Settings:
+    return Settings()
+
+
+ENSURE server/main.py uses it:
+
+from server.core.config import get_settings
+from fastapi.middleware.cors import CORSMiddleware
+settings = get_settings()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins_list,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+2) DATABASE (WARN→FIX)
+
+EDIT server/core/database.py to honor DATABASE_URL and avoid unconditional create_all:
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from server.core.config import get_settings
+
+settings = get_settings()
+engine = create_engine(settings.DATABASE_URL, future=True)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+def init_dev_sqlite_if_needed(Base):
+    # Dev convenience: only auto-create for sqlite AND DEBUG=true
+    if settings.DEBUG and settings.DATABASE_URL.startswith("sqlite"):
+        Base.metadata.create_all(bind=engine)
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+Call init_dev_sqlite_if_needed(Base) once in your app startup if you keep SQLite for dev.
+
+3) EVENTS MODEL + MIGRATION (FAIL→FIX)
+
+EDIT server/models/event.py (add columns + consistent data_json):
+
+from sqlalchemy import Column, String, DateTime, Text, Index, func
+from .base import Base
+
+class Event(Base):
+    __tablename__ = "events"
+    id = Column(String, primary_key=True)
+    tenant_id = Column(String, index=True, nullable=True)
+    merchant_id = Column(String, nullable=True)
+    deal_id = Column(String, index=True, nullable=True)
+    type = Column(String, nullable=False)
+    data_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+
+Index("ix_events_type_created", Event.type, Event.created_at.desc())
+
+
+Update all writers to use data_json=<json.dumps(dict))> instead of data=.
+
+ADD Alembic scaffolding if missing:
+
+Create alembic.ini (root):
+
+[alembic]
+script_location = alembic
+sqlalchemy.url = sqlite:///./uwizard.db
+
+
+Create alembic/env.py:
+
+from logging.config import fileConfig
+from sqlalchemy import engine_from_config, pool
+from alembic import context
+import os
+
+# import your Base
+from server.models.base import Base
+from server.core.config import get_settings
+
+config = context.config
+settings = get_settings()
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+
+target_metadata = Base.metadata
+
+def run_migrations_offline():
+    context.configure(url=settings.DATABASE_URL, target_metadata=target_metadata, literal_binds=True)
+    with context.begin_transaction():
+        context.run_migrations()
+
+def run_migrations_online():
+    connectable = engine_from_config(
+        config.get_section(config.config_ini_section),
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
+    with connectable.connect() as connection:
+        context.configure(connection=connection, target_metadata=target_metadata)
+        with context.begin_transaction():
+            context.run_migrations()
+
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()
+
+
+ADD migration: alembic/versions/uwizard_events_dealid.py
+
+from alembic import op
+import sqlalchemy as sa
+
+revision = "uwizard_events_dealid"
+down_revision = "<PUT_PREV_REVISION_ID>"
+branch_labels = None
+depends_on = None
+
+def upgrade():
+    with op.batch_alter_table("events") as b:
+        b.add_column(sa.Column("tenant_id", sa.String(), nullable=True))
+        b.add_column(sa.Column("deal_id", sa.String(), nullable=True))
+    op.create_index("ix_events_tenant_id", "events", ["tenant_id"])
+    op.create_index("ix_events_deal_id", "events", ["deal_id"])
+
+    conn = op.get_bind()
+    dialect = conn.dialect.name
+    # best-effort backfill from JSON
+    if dialect == "postgresql":
+        conn.execute(sa.text("UPDATE events SET deal_id = COALESCE(deal_id, (data_json->>'deal_id'))"))
+    else:
+        conn.execute(sa.text("UPDATE events SET deal_id = COALESCE(deal_id, json_extract(data_json, '$.deal_id'))"))
+
+def downgrade():
+    op.drop_index("ix_events_deal_id", table_name="events")
+    op.drop_index("ix_events_tenant_id", table_name="events")
+    with op.batch_alter_table("events") as b:
+        b.drop_column("deal_id"); b.drop_column("tenant_id")
+
+
+Action for Replit Agent: If you don’t know <PUT_PREV_REVISION_ID>, run alembic revision -m "events deal/tenant" first, then overwrite file content with the above and set down_revision to your last revision id.
+
+UPDATE all event writers to set both tenant_id and deal_id, and use data_json=....
+
+Example (in any route):
+
+import json
+db.add(Event(tenant_id=getattr(request.state, "tenant_id", None),
+             merchant_id=merchant_id, deal_id=deal_id,
+             type="background.result", data_json=json.dumps({"status": status, "reasons": reasons})))
+
+4) IDEMPOTENCY ON ALL POSTS (FAIL→FIX)
+
+REPLACE / CREATE server/core/idempotency.py with Redis + in-memory fallback:
+
+import hashlib, json, time
+from typing import Optional
+from fastapi import Header, HTTPException, Request
+from server.core.config import get_settings
+
+S = get_settings()
+_memory_store = {}
+
+try:
+    from redis.asyncio import from_url as redis_from_url
+    R = None if S.REDIS_URL.startswith("memory://") else redis_from_url(S.REDIS_URL, encoding="utf-8", decode_responses=True)
+except Exception:
+    R = None
+
+TTL = 3600
+
+async def capture_body(request: Request):
+    request.state._body_cache = await request.body()
+
+def _key(tenant_id: str, path: str, idem: str, body: bytes) -> str:
+    h = hashlib.sha256(body or b"").hexdigest()
+    return f"idem:{tenant_id}:{path}:{idem}:{h}"
+
+async def require_idempotency(
+    request: Request,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+    tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
+):
+    if not idempotency_key: raise HTTPException(400, "Missing Idempotency-Key")
+    if not tenant_id: raise HTTPException(400, "Missing X-Tenant-ID")
+    request.state.tenant_id = tenant_id
+    key = _key(tenant_id, request.url.path, idempotency_key, getattr(request.state, "_body_cache", b""))
+
+    if R:
+        cached = await R.get(key)
+        if cached: request.state.idem_cached = json.loads(cached)
+        request.state.idem_key = key
+    else:
+        # in-memory fallback for Replit dev
+        row = _memory_store.get(key)
+        if row and (time.time() - row["ts"] < TTL):
+            request.state.idem_cached = row["val"]
+        request.state.idem_key = key
+
+    return tenant_id
+
+async def store_idempotent(request: Request, payload: dict):
+    key = getattr(request.state, "idem_key", None)
+    if not key: return
+    if R: await R.set(key, json.dumps(payload), ex=TTL)
+    else: _memory_store[key] = {"val": payload, "ts": time.time()}
+
+
+APPLY to these routes (import capture_body, require_idempotency, store_idempotent and wrap):
+
+/api/deals/start
+
+/api/intake/answer
+
+/api/documents/bank/upload (you already wrapped—keep it)
+
+/api/deals/{deal_id}/offers (update & return)
+
+/api/background/run
+
+/api/sign/send
+
+/api/sms/cherry/send (already done)
+
+Pattern inside each handler:
+
+@router.post("...path...", dependencies=[Depends(capture_body)])
+async def handler(request: Request, tenant_id=Depends(require_idempotency), ...):
+    if getattr(request.state, "idem_cached", None):
+        return request.state.idem_cached
+    # ... do work ...
+    resp = {...}
+    await store_idempotent(request, resp)
+    return resp
+
+5) OFFERS ROUTE RETURN + EVENT (FAIL→FIX)
+
+EDIT server/routes/offers.py (complete the handler):
+
+import json
+from fastapi import APIRouter, Depends, Request, HTTPException
+from sqlalchemy.orm import Session
+from ..db import get_db
+from ..models import Deal, Offer, Event
+from server.core.idempotency import capture_body, require_idempotency, store_idempotent
+from ..services.underwriting import generate_offers
+
+router = APIRouter(prefix="/api/deals", tags=["offers"])
+
+@router.post("/{deal_id}/offers", dependencies=[Depends(capture_body)])
+async def make_offers(request: Request, deal_id: str, tenant_id=Depends(require_idempotency), db: Session = Depends(get_db)):
+    if getattr(request.state, "idem_cached", None):
+        return request.state.idem_cached
+    deal = db.query(Deal).get(deal_id)
+    if not deal: raise HTTPException(404, "deal not found")
+
+    offers = generate_offers(deal_id, db)  # your service returns list OR {"blocked":...}
+    if isinstance(offers, dict) and offers.get("blocked"):
+        resp = {"blocked": True, "reason": offers.get("reason")}
+        await store_idempotent(request, resp)
+        return resp
+
+    # persist as generated event (optional, not acceptance)
+    db.add(Event(tenant_id=tenant_id, merchant_id=deal.merchant_id, deal_id=deal_id,
+                 type="offer.generated", data_json=json.dumps({"count": len(offers)})))
+    # optionally store rows in offers table:
+    for o in offers:
+        db.add(Offer(deal_id=deal_id, payload=o))
+    db.commit()
+    resp = {"offers": offers}
+    await store_idempotent(request, resp)
+    return resp
+
+6) SIGNING WEBHOOK VERIFY + IDEMPOTENCY + deal_id (FAIL→FIX)
+
+EDIT server/routes/sign.py (add verification + idempotency + deal_id in events):
+
+import hmac, hashlib, json
+from fastapi import APIRouter, Depends, HTTPException, Request, Header
+from sqlalchemy.orm import Session
+from ..db import get_db
+from ..models import Deal, Event
+from server.core.config import get_settings
+from server.core.idempotency import capture_body, require_idempotency, store_idempotent
+
+router = APIRouter(prefix="/api/sign", tags=["sign"])
+S = get_settings()
+
+def verify_dropboxsign(body: bytes, header: str) -> bool:
+    if not S.DROPBOXSIGN_WEBHOOK_SECRET: return False
+    expected = hmac.new(S.DROPBOXSIGN_WEBHOOK_SECRET.encode(), body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, (header or "").strip())
+
+def verify_docusign(body: bytes, header: str) -> bool:
+    if not S.DOCUSIGN_WEBHOOK_SECRET: return False
+    expected = hmac.new(S.DOCUSIGN_WEBHOOK_SECRET.encode(), body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, (header or "").strip())
+
+@router.post("/send", dependencies=[Depends(capture_body)])
+async def send_for_signature(request: Request, deal_id: str, recipient_email: str, force: bool = False,
+                             tenant_id=Depends(require_idempotency), db: Session = Depends(get_db)):
+    if getattr(request.state, "idem_cached", None):
+        return request.state.idem_cached
+    d = db.query(Deal).get(deal_id)
+    if not d: raise HTTPException(404, "Deal not found")
+
+    if not force:
+        bg = db.execute("SELECT data_json FROM events WHERE deal_id=:did AND type='background.result' ORDER BY created_at DESC LIMIT 1", {"did": deal_id}).first()
+        if not bg: raise HTTPException(400, "Background missing; force=true to override")
+        status = (json.loads(bg[0] or "{}")).get("status")
+        if status != "OK": raise HTTPException(400, f"Background not OK ({status}); force=true to override")
+
+    # TODO: call signer API here
+    db.add(Event(tenant_id=tenant_id, merchant_id=d.merchant_id, deal_id=deal_id,
+                 type="sign.sent", data_json=json.dumps({"to": recipient_email, "force": force})))
+    db.commit()
+    resp = {"ok": True}
+    await store_idempotent(request, resp)
+    return resp
+
+@router.post("/webhook", dependencies=[Depends(capture_body)])
+async def signer_webhook(request: Request, db: Session = Depends(get_db),
+                         x_dropbox_sign_signature: str = Header(None),
+                         x_docusign_signature_1: str = Header(None)):
+    raw = await request.body()
+    if not (verify_dropboxsign(raw, x_dropbox_sign_signature) or verify_docusign(raw, x_docusign_signature_1)):
+        raise HTTPException(401, "Invalid signature")
+    payload = await request.json()
+    # normalize your signer payload to include deal_id
+    deal_id = payload.get("deal_id")
+    if not deal_id:
+        raise HTTPException(400, "Missing deal_id")
+
+    # idempotency on event id
+    event_id = payload.get("event_id") or hashlib.sha256(raw).hexdigest()
+    exists = db.execute("SELECT 1 FROM events WHERE type='sign.signed' AND data_json LIKE :needle",
+                        {"needle": f'%{event_id}%'}).first()
+    if exists: return {"ok": True}
+
+    d = db.query(Deal).get(deal_id)
+    db.add(Event(tenant_id=None, merchant_id=getattr(d, "merchant_id", None), deal_id=deal_id,
+                 type="sign.signed", data_json=json.dumps({"event_id": event_id})))
+    db.commit()
+    return {"ok": True}
+
+7) DOCUMENTS MIGRATION TABLE NAME (FAIL→FIX)
+
+REPLACE alembic/versions/uwizard_documents_s3.py to target your actual table (likely documents; adjust if yours is bank_documents):
+
+from alembic import op
+import sqlalchemy as sa
+
+revision = "uwizard_documents_s3"
+down_revision = "uwizard_events_dealid"
+branch_labels = None
+depends_on = None
+
+def upgrade():
+    with op.batch_alter_table("documents") as b:
+        b.add_column(sa.Column("storage_key", sa.String(), nullable=True))
+        b.add_column(sa.Column("bucket", sa.String(), nullable=True))
+        b.add_column(sa.Column("checksum", sa.String(), nullable=True))
+        # optional: drop file_data blob if present:
+        # b.drop_column("file_data")
+
+def downgrade():
+    with op.batch_alter_table("documents") as b:
+        b.drop_column("checksum"); b.drop_column("bucket"); b.drop_column("storage_key")
+
+8) STORAGE FALLBACK FOR REPLIT (WARN→FIX)
+
+REPLACE server/services/storage.py with local fallback:
+
+import pathlib, hashlib
+from botocore.client import Config
+import boto3
+from server.core.config import get_settings
+
+S = get_settings()
+
+def _sha256(b: bytes) -> str:
+    h = hashlib.sha256(); h.update(b); return h.hexdigest()
+
+def put_private(data: bytes, key: str, content_type: str):
+    if S.MOCK_MODE or not (S.AWS_ACCESS_KEY_ID and S.AWS_SECRET_ACCESS_KEY and S.S3_BUCKET):
+        base = pathlib.Path("./data/uploads"); base.mkdir(parents=True, exist_ok=True)
+        path = base / key.replace("/", "__")
+        path.write_bytes(data)
+        return {"bucket": "local", "key": str(path), "checksum": _sha256(data)}
+    s3 = boto3.client("s3",
+        region_name=S.AWS_REGION,
+        aws_access_key_id=S.AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=S.AWS_SECRET_ACCESS_KEY,
+        config=Config(signature_version="s3v4"),
+    )
+    s3.put_object(Bucket=S.S3_BUCKET, Key=key, Body=data, ContentType=content_type, ACL="private")
+    return {"bucket": S.S3_BUCKET, "key": key, "checksum": _sha256(data)}
+
+9) DEAL STATUS ENUM NORMALIZATION (WARN→FIX)
+
+ADD migration alembic/versions/uwizard_deal_status_enum.py
+
+from alembic import op
+import sqlalchemy as sa
+
+revision = "uwizard_deal_status_enum"
+down_revision = "uwizard_documents_s3"
+branch_labels = None
+depends_on = None
+
+def upgrade():
+    # normalize existing statuses
+    conn = op.get_bind()
+    # active -> open
+    conn.execute(sa.text("UPDATE deals SET status='open' WHERE status='active'"))
+    # completed -> closed
+    conn.execute(sa.text("UPDATE deals SET status='closed' WHERE status='completed'"))
+    # ensure only allowed set remains; others to 'open'
+    conn.execute(sa.text("UPDATE deals SET status='open' WHERE status NOT IN ('open','offer','accepted','signed','declined','closed')"))
+
+def downgrade():
+    pass
+
+
+EDIT server/models/deal.py default & (optional) constraint:
+
+from sqlalchemy import Column, String, DateTime, func
+from .base import Base
+
+ALLOWED_STATUS = ("open","offer","accepted","signed","declined","closed")
+
+class Deal(Base):
+    __tablename__ = "deals"
+    id = Column(String, primary_key=True)
+    merchant_id = Column(String, nullable=False)
+    status = Column(String, default="open", nullable=False)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+
+
+Ensure all transitions in routes set one of the allowed values.
+
+10) RUN MIGRATIONS (Replit)
+
+In the Replit shell:
+
+# init if needed
+# alembic init alembic   # only if alembic/ doesn’t exist
+
+# create any missing revisions from head; set down_revision chain (events -> documents_s3 -> consents -> deal_status_enum)
+alembic upgrade head
+
+
+If down_revision IDs are unknown: run alembic revision -m "<name>" to generate, then replace the file contents with the snippets above and set each down_revision to the previous revision’s id.
+
+11) QUICK SMOKE (must all 200)
+# start/reuse deal
+POST /api/deals/start   (X-Tenant-ID + Idempotency-Key)
+
+# intake answer => returns missing/confirm
+POST /api/intake/answer (X-Tenant-ID + Idempotency-Key)
+
+# upload exactly 3 PDFs (now stored local under ./data/uploads in MOCK_MODE)
+POST /api/documents/bank/upload?merchant_id=..&deal_id=..
+
+# offers => returns offers and writes offer.generated event
+POST /api/deals/{id}/offers
+
+# accept, background (flags-only)
+POST /api/deals/{id}/accept
+POST /api/background/run?merchant_id=..&deal_id=..
+
+# sign send (blocks unless background OK; force=true overrides)
+POST /api/sign/send?deal_id=..&recipient_email=..&force=false
+
+# sms send + STOP webhook
+POST /api/sms/cherry/send (rate-limited + STOP footer + idempotent)
+POST /api/sms/cherry/webhook  {"type":"inbound","from":"+1...","text":"STOP"}

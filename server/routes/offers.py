@@ -1,6 +1,6 @@
 """Offer generation endpoints."""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
@@ -9,6 +9,7 @@ import json
 import math
 
 from core.database import get_db
+from core.idempotency import require_idempotency, capture_body, store_idempotent
 from models.offer import Offer
 from models.deal import Deal
 from models.metrics_snapshot import MetricsSnapshot
@@ -32,9 +33,11 @@ class GenerateOffersRequest(BaseModel):
     overrides: Optional[OfferOverrides] = None
 
 
-@router.post("/")
+@router.post("/", dependencies=[Depends(capture_body)])
 async def generate_offers(
+    req: Request,
     request: GenerateOffersRequest,
+    ide=Depends(require_idempotency),
     db: Session = Depends(get_db)
 ):
     """Generate funding offers for a deal based on latest metrics with underwriting guardrails."""
@@ -117,19 +120,23 @@ async def generate_offers(
             "message": "This application requires manual underwriting review before offers can be generated"
         }
     
-    # Base offer calculation
-    revenue = request.avg_monthly_revenue
-    balance = request.avg_daily_balance_3m
-    nsf_count = request.total_nsf_3m
-    negative_days = request.total_days_negative_3m
+    # Base offer calculation with null checks
+    revenue = request.avg_monthly_revenue or metrics.get("avg_monthly_revenue") or 0.0
+    balance = request.avg_daily_balance_3m or metrics.get("avg_daily_balance_3m") or 0.0
+    nsf_count = request.total_nsf_3m or metrics.get("total_nsf_3m") or 0
+    negative_days = request.total_days_negative_3m or metrics.get("total_days_negative_3m") or 0
+    
+    # Ensure we have minimum revenue for calculations
+    if revenue <= 0:
+        return {"error": "Revenue data required for offer generation", "deal_id": request.deal_id}
     
     # Risk scoring (simplified)
     risk_score = 0.5  # Base score
-    if nsf_count > 3:
+    if nsf_count and nsf_count > 3:
         risk_score += 0.2
-    if negative_days > 10:
+    if negative_days and negative_days > 10:
         risk_score += 0.2
-    if balance < revenue * 0.1:  # Less than 10% of monthly revenue
+    if balance and balance < revenue * 0.1:  # Less than 10% of monthly revenue
         risk_score += 0.15
     
     risk_score = min(risk_score, 1.0)
@@ -172,7 +179,7 @@ async def generate_offers(
             deal_amount=offer_amount,
             fee_rate=tier["fee"],
             term_days=tier["term_days"],
-            monthly_revenue=revenue,
+            monthly_revenue=float(revenue),
             state="CA"
         )
         
@@ -191,7 +198,7 @@ async def generate_offers(
             "underwriting_decision": underwriting_result.decision.value,
             "terms_compliant": terms_valid,
             "compliance_issues": term_issues,
-            "rationale": f"Based on ${int(revenue):,}/month revenue, {tier['term_days']}-day term"
+            "rationale": f"Based on ${int(float(revenue)):,}/month revenue, {tier['term_days']}-day term"
         }
         
         offers.append(offer)
