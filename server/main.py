@@ -52,6 +52,13 @@ async def lifespan(app: FastAPI):
     # Initialize database for development
     init_dev_sqlite_if_needed(Base)
     
+    # Ensure tables are created when falling back to SQLite from Postgres
+    from core.database import create_engine_with_fallback
+    engine = create_engine_with_fallback()
+    if engine.dialect.name == 'sqlite':
+        logger.info("Creating SQLite tables after fallback...")
+        Base.metadata.create_all(bind=engine)
+    
     # Create data directories
     os.makedirs("data/contracts", exist_ok=True)
     os.makedirs("data/uploads", exist_ok=True)

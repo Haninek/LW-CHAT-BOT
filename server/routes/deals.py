@@ -18,7 +18,7 @@ from core.config import get_settings
 
 settings = get_settings()
 
-router = APIRouter(prefix="/api/deals", tags=["deals"])
+router = APIRouter(prefix="/deals", tags=["deals"])
 
 
 class StartDealRequest(BaseModel):
