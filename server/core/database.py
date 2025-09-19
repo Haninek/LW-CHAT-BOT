@@ -1,6 +1,7 @@
 """Database configuration and initialization."""
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker
 import logging
 from core.config import get_settings
@@ -26,6 +27,16 @@ def create_engine_with_fallback():
             logger.info("✅ Connected to SQLite fallback database")
             return engine
         raise
+
+# SQLite FK enforcement
+@event.listens_for(Engine, "connect")
+def _set_sqlite_pragma(dbapi_connection, connection_record):
+    """Turn on FK checks for SQLite dev environment"""
+    settings = get_settings()
+    if settings.DATABASE_URL.startswith("sqlite"):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
 engine = create_engine_with_fallback()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, select, func, desc, and_
 from typing import Optional, List
 from datetime import datetime, timedelta
 import json
@@ -64,49 +64,67 @@ async def list_deals(
 ):
     """List deals with optional filtering and search."""
     
-    # Build query
-    query = db.query(Deal, Merchant).join(Merchant, Merchant.id == Deal.merchant_id)
+    # Build query using explicit OUTER JOINs to avoid SQLAlchemy relationship issues
+    # Latest event per deal via scalar subquery:
+    sub = (
+        select(func.max(Event.created_at))
+        .where(Event.deal_id == Deal.id)
+        .correlate(Deal)
+        .scalar_subquery()
+    )
+    
+    query = (
+        select(
+            Deal.id.label("deal_id"),
+            Deal.status,
+            Deal.created_at,
+            Deal.funding_amount,
+            Merchant.id.label("merchant_id"),
+            Merchant.legal_name,
+            Merchant.phone,
+            Merchant.email,
+            Merchant.state,
+            Event.type.label("last_event_type"),
+            Event.created_at.label("last_event_at"),
+        )
+        .join(Merchant, Merchant.id == Deal.merchant_id, isouter=True)
+        .join(Event, and_(Event.deal_id == Deal.id, Event.created_at == sub), isouter=True)
+        .order_by(desc(Deal.created_at))
+    )
     
     if status:
-        query = query.filter(Deal.status == status)
+        query = query.where(Deal.status == status)
     
     if q:
         search_term = f"%{q}%"
-        query = query.filter(
+        query = query.where(
             (Merchant.legal_name.ilike(search_term)) |
             (Merchant.phone.ilike(search_term)) |
             (Merchant.email.ilike(search_term))
         )
     
-    query = query.order_by(Deal.created_at.desc()).limit(limit)
+    query = query.limit(limit)
     
     items = []
-    for deal, merchant in query.all():
-        # Get latest metrics
-        metrics = db.query(MetricsSnapshot).filter(
-            MetricsSnapshot.deal_id == deal.id
-        ).order_by(MetricsSnapshot.created_at.desc()).first()
-        
-        # Get latest background check
-        background = db.query(Event).filter(
-            Event.merchant_id == deal.merchant_id,
-            Event.type == "background.result"
-        ).order_by(Event.created_at.desc()).first()
-        
+    for row in db.execute(query).all():
         items.append({
-            "deal_id": deal.id,
-            "status": deal.status,
-            "created_at": deal.created_at.isoformat(),
-            "funding_amount": deal.funding_amount,
+            "deal_id": row.deal_id,
+            "status": row.status,
+            "created_at": row.created_at.isoformat(),
+            "funding_amount": row.funding_amount,
             "merchant": {
-                "id": merchant.id,
-                "legal_name": merchant.legal_name,
-                "phone": merchant.phone[-4:] if merchant.phone and len(merchant.phone) >= 4 else None,  # Safe mask phone
-                "email": (merchant.email.split('@')[0][:3] + "***@" + merchant.email.split('@')[1]) if merchant.email and '@' in merchant.email else None,  # Safe mask email
-                "state": merchant.state
+                "id": row.merchant_id,
+                "legal_name": row.legal_name,
+                "phone": row.phone[-4:] if row.phone and len(row.phone) >= 4 else None,  # Safe mask phone
+                "email": (row.email.split('@')[0][:3] + "***@" + row.email.split('@')[1]) if row.email and '@' in row.email else None,  # Safe mask email
+                "state": row.state
             },
             "metrics_summary": None,  # Redacted for security
-            "background": None  # Redacted for security
+            "background": None,  # Redacted for security
+            "last_event": {
+                "type": row.last_event_type,
+                "created_at": row.last_event_at.isoformat() if row.last_event_at else None
+            } if row.last_event_type else None
         })
     
     return {"items": items}
