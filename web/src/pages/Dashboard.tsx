@@ -38,22 +38,22 @@ function StatCard({ title, value, subtitle, icon: Icon, color = 'primary', trend
   isLoading?: boolean
 }) {
   const colorClasses = {
-    primary: 'from-blue-500 to-blue-600 shadow-blue-500/25',
-    success: 'from-emerald-500 to-emerald-600 shadow-emerald-500/25',
-    warning: 'from-amber-500 to-amber-600 shadow-amber-500/25', 
-    error: 'from-red-500 to-red-600 shadow-red-500/25'
+    primary: 'premium-gradient shadow-blue-500/30',
+    success: 'success-gradient shadow-emerald-500/30',
+    warning: 'warning-gradient shadow-amber-500/30', 
+    error: 'bg-gradient-to-br from-rose-500 to-pink-600 shadow-rose-500/30'
   }
 
   if (isLoading) {
     return (
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200/50 animate-pulse">
+      <div className="bg-white/60 backdrop-blur-xl rounded-3xl p-8 shadow-xl border border-white/20 animate-pulse">
         <div className="flex items-center justify-between">
           <div className="flex-1">
-            <div className="h-4 bg-slate-200 rounded w-24 mb-3"></div>
-            <div className="h-8 bg-slate-200 rounded w-16 mb-2"></div>
-            <div className="h-3 bg-slate-200 rounded w-20"></div>
+            <div className="h-4 bg-gradient-to-r from-slate-200 to-slate-300 rounded-full w-28 mb-4 animate-shimmer"></div>
+            <div className="h-10 bg-gradient-to-r from-slate-200 to-slate-300 rounded-xl w-20 mb-3 animate-shimmer"></div>
+            <div className="h-3 bg-gradient-to-r from-slate-200 to-slate-300 rounded-full w-24 animate-shimmer"></div>
           </div>
-          <div className="w-14 h-14 bg-slate-200 rounded-xl"></div>
+          <div className="w-16 h-16 bg-gradient-to-br from-slate-200 to-slate-300 rounded-2xl animate-shimmer"></div>
         </div>
       </div>
     )
@@ -63,34 +63,48 @@ function StatCard({ title, value, subtitle, icon: Icon, color = 'primary', trend
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
-      className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200/50 hover:shadow-md transition-all duration-300 group"
+      transition={{ duration: 0.6, ease: "easeOut" }}
+      whileHover={{ scale: 1.02, y: -4 }}
+      className="bg-white/70 backdrop-blur-2xl rounded-3xl p-8 shadow-xl border border-white/20 hover:shadow-2xl transition-all duration-500 group relative overflow-hidden"
     >
-      <div className="flex items-center justify-between">
+      {/* Background gradient overlay */}
+      <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-transparent pointer-events-none"></div>
+      
+      <div className="relative z-10 flex items-center justify-between">
         <div className="flex-1">
-          <p className="text-sm font-medium text-slate-600 group-hover:text-slate-700 transition-colors">
+          <p className="text-sm font-semibold text-slate-600 group-hover:text-slate-700 transition-colors tracking-wide uppercase">
             {title}
           </p>
-          <p className="text-3xl font-bold text-slate-900 mt-2 mb-1">
+          <p className="text-4xl font-bold text-slate-900 mt-3 mb-2 tracking-tight">
             {value}
           </p>
           {subtitle && (
-            <p className="text-sm text-slate-500">{subtitle}</p>
+            <p className="text-sm text-slate-500 font-medium">{subtitle}</p>
           )}
           {trend && (
-            <div className={`flex items-center mt-3 text-sm font-medium ${
-              trend.direction === 'up' ? 'text-emerald-600' : 'text-red-500'
-            }`}>
+            <motion.div 
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.3 }}
+              className={`flex items-center mt-4 text-sm font-semibold ${
+                trend.direction === 'up' ? 'text-emerald-600' : 'text-red-500'
+              }`}
+            >
               <TrendingUp className={`w-4 h-4 mr-1 ${
                 trend.direction === 'down' ? 'rotate-180' : ''
               }`} />
               {Math.abs(trend.value)}% vs last month
-            </div>
+            </motion.div>
           )}
         </div>
-        <div className={`w-14 h-14 bg-gradient-to-r ${colorClasses[color]} rounded-xl flex items-center justify-center shadow-lg`}>
-          <Icon className="w-7 h-7 text-white" />
-        </div>
+        <motion.div 
+          className={`w-16 h-16 ${colorClasses[color]} rounded-2xl flex items-center justify-center shadow-2xl animate-float relative`}
+          whileHover={{ rotate: 5, scale: 1.1 }}
+          transition={{ type: "spring", stiffness: 300 }}
+        >
+          <Icon className="w-8 h-8 text-white relative z-10" />
+          <div className="absolute inset-0 bg-white/20 rounded-2xl"></div>
+        </motion.div>
       </div>
     </motion.div>
   )
@@ -104,23 +118,33 @@ function QuickAction({ title, description, icon: Icon, onClick, color = 'primary
   color?: 'primary' | 'success' | 'warning'
 }) {
   const colorClasses = {
-    primary: 'bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200',
-    success: 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-200',
-    warning: 'bg-amber-50 text-amber-700 hover:bg-amber-100 border-amber-200'
+    primary: 'bg-gradient-to-br from-blue-50/80 to-indigo-50/80 text-blue-700 hover:from-blue-100/90 hover:to-indigo-100/90 border-blue-200/60',
+    success: 'bg-gradient-to-br from-emerald-50/80 to-teal-50/80 text-emerald-700 hover:from-emerald-100/90 hover:to-teal-100/90 border-emerald-200/60',
+    warning: 'bg-gradient-to-br from-amber-50/80 to-orange-50/80 text-amber-700 hover:from-amber-100/90 hover:to-orange-100/90 border-amber-200/60'
   }
 
   return (
     <motion.button
       onClick={onClick}
-      whileHover={{ scale: 1.02 }}
+      whileHover={{ scale: 1.03, y: -2 }}
       whileTap={{ scale: 0.98 }}
-      className={`p-4 rounded-xl border-2 transition-all duration-200 text-left w-full ${colorClasses[color]}`}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, type: "spring", stiffness: 200 }}
+      className={`p-6 rounded-2xl border backdrop-blur-xl transition-all duration-300 text-left w-full shadow-lg hover:shadow-xl ${colorClasses[color]} relative overflow-hidden group`}
     >
-      <div className="flex items-center">
-        <Icon className="w-8 h-8 mr-3" />
+      <div className="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+      <div className="relative z-10 flex items-center">
+        <motion.div
+          whileHover={{ rotate: 5, scale: 1.1 }}
+          transition={{ type: "spring", stiffness: 300 }}
+          className="w-12 h-12 mr-4 bg-white/50 rounded-xl flex items-center justify-center shadow-md"
+        >
+          <Icon className="w-6 h-6" />
+        </motion.div>
         <div>
-          <h3 className="font-semibold text-sm">{title}</h3>
-          <p className="text-xs opacity-75 mt-1">{description}</p>
+          <h3 className="font-bold text-base mb-1">{title}</h3>
+          <p className="text-sm opacity-80 leading-relaxed">{description}</p>
         </div>
       </div>
     </motion.button>
