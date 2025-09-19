@@ -193,7 +193,7 @@ async def signing_webhook(
     # Parse in Python for SQLite/Postgres compatibility
     for event in sign_events:
         try:
-            event_data = json.loads(event.data_json)
+            event_data = json.loads(event.data_json or "{}")
             if event_data.get("envelope_id") == webhook_data.envelope_id:
                 deal_id = event_data.get("deal_id")
                 tenant_id = event.tenant_id or agreement.merchant_id
