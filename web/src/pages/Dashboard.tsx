@@ -153,31 +153,47 @@ const Dashboard: React.FC = () => {
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             <ApiWidget
-              title="Posts Feed"
-              endpoint="https://jsonplaceholder.typicode.com/posts"
-              refreshInterval={30000}
-              limit={5}
+              config={{
+                id: 'posts-feed',
+                title: "Posts Feed",
+                endpoint: "https://jsonplaceholder.typicode.com/posts",
+                refreshInterval: 30,
+                valuePath: 'length',
+                formatter: 'number'
+              }}
             />
             <ApiWidget
-              title="User Directory"
-              endpoint="https://jsonplaceholder.typicode.com/users"
-              refreshInterval={45000}
-              limit={6}
+              config={{
+                id: 'user-directory',
+                title: "User Directory",
+                endpoint: "https://jsonplaceholder.typicode.com/users",
+                refreshInterval: 45,
+                valuePath: 'length',
+                formatter: 'number'
+              }}
             />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <ApiWidget
-              title="Photo Gallery"
-              endpoint="https://jsonplaceholder.typicode.com/photos"
-              refreshInterval={60000}
-              limit={4}
+              config={{
+                id: 'photo-gallery',
+                title: "Photo Gallery", 
+                endpoint: "https://jsonplaceholder.typicode.com/photos",
+                refreshInterval: 60,
+                valuePath: 'length',
+                formatter: 'number'
+              }}
             />
             <ApiWidget
-              title="Comments Stream"
-              endpoint="https://jsonplaceholder.typicode.com/comments"
-              refreshInterval={20000}
-              limit={5}
+              config={{
+                id: 'comments-stream',
+                title: "Comments Stream",
+                endpoint: "https://jsonplaceholder.typicode.com/comments",
+                refreshInterval: 20,
+                valuePath: 'length',
+                formatter: 'number'
+              }}
             />
           </div>
 
