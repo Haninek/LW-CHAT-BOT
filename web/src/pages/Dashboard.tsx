@@ -267,54 +267,92 @@ export default function Dashboard() {
   ]
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/30">
-      {/* Header */}
-      <div className="bg-white/80 backdrop-blur-sm border-b border-slate-200/50 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen">
+      {/* Hero Header with Gradient Background */}
+      <div className="relative overflow-hidden">
+        {/* Animated Background */}
+        <div className="absolute inset-0 bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 animate-gradient"></div>
+        <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent"></div>
+        <div className="absolute inset-0 backdrop-blur-3xl bg-white/10"></div>
+        
+        {/* Floating Elements */}
+        <div className="absolute top-20 left-20 w-72 h-72 bg-gradient-to-r from-cyan-400/30 to-blue-400/30 rounded-full blur-3xl animate-float"></div>
+        <div className="absolute bottom-20 right-20 w-96 h-96 bg-gradient-to-r from-purple-400/20 to-pink-400/20 rounded-full blur-3xl animate-float" style={{ animationDelay: '1s' }}></div>
+        
+        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
           <motion.div
-            initial={{ opacity: 0, y: -20 }}
+            initial={{ opacity: 0, y: -30 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex items-center justify-between py-6"
+            transition={{ duration: 0.8, ease: "easeOut" }}
+            className="text-center"
           >
-            <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
-                Underwriting Wizard
-              </h1>
-              <p className="text-slate-600 mt-1">
-                AI-powered lending operations platform
-              </p>
-            </div>
-            <div className="flex items-center space-x-4">
+            <motion.h1 
+              className="text-5xl sm:text-6xl font-black mb-4 bg-gradient-to-r from-white via-blue-100 to-cyan-100 bg-clip-text text-transparent"
+              initial={{ scale: 0.8 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
+            >
+              Underwriting Wizard
+            </motion.h1>
+            <motion.p 
+              className="text-xl text-blue-100 mb-8 font-medium"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+            >
+              AI-powered lending operations platform with intelligent automation
+            </motion.p>
+            
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               {lastRefresh && (
-                <div className="text-sm text-slate-500">
-                  Last updated: {lastRefresh.toLocaleTimeString()}
-                </div>
+                <motion.div 
+                  className="text-sm text-blue-200 bg-white/10 px-4 py-2 rounded-full backdrop-blur-xl border border-white/20"
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 0.6 }}
+                >
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                    <span>Live • Updated {lastRefresh.toLocaleTimeString()}</span>
+                  </div>
+                </motion.div>
               )}
+              
               <motion.button
                 onClick={loadDashboardData}
-                whileHover={{ scale: 1.05 }}
+                whileHover={{ scale: 1.05, y: -2 }}
                 whileTap={{ scale: 0.95 }}
                 disabled={loading}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-medium shadow-lg shadow-blue-600/25 transition-all duration-200 flex items-center disabled:opacity-50"
+                className="bg-white/20 hover:bg-white/30 text-white px-8 py-3 rounded-2xl font-semibold shadow-2xl backdrop-blur-xl border border-white/30 transition-all duration-300 flex items-center disabled:opacity-50 group"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.8 }}
               >
-                <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-                Refresh
+                <RefreshCw className={`w-5 h-5 mr-3 group-hover:rotate-180 transition-transform duration-500 ${loading ? 'animate-spin' : ''}`} />
+                Refresh Dashboard
               </motion.button>
             </div>
           </motion.div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
-        {/* System Health Overview */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="mb-8"
-        >
-          <h2 className="text-xl font-semibold text-slate-900 mb-4">System Health</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+      {/* Main Content Area */}
+      <div className="relative bg-gradient-to-br from-slate-50 via-white to-blue-50/30 min-h-screen">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10">
+          {/* System Health Overview */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2, duration: 0.6 }}
+            className="mb-12"
+          >
+            <div className="text-center mb-8">
+              <h2 className="text-3xl font-bold bg-gradient-to-r from-slate-900 via-blue-800 to-purple-800 bg-clip-text text-transparent mb-3">
+                System Health Overview
+              </h2>
+              <p className="text-slate-600 text-lg">Real-time monitoring and performance metrics</p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-8">
             <StatCard
               title="Service Status"
               value={health.status}
