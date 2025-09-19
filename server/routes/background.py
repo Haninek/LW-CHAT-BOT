@@ -104,6 +104,17 @@ async def start_comprehensive_background_check(
         # Update job with flag-only results
         job.status = "completed"
         job.result_json = json.dumps(aggregated)
+        
+        # Log background result event
+        from models.event import Event
+        db.add(Event(
+            tenant_id=None,  # TODO: get from header when multi-tenant is wired
+            merchant_id=request.merchant_id,
+            deal_id=None,  # TODO: add deal_id to request when available
+            type="background.result",
+            data_json=json.dumps({"status": aggregated.get("overall_flag", "unknown"), "reasons": aggregated})
+        ))
+        
         db.commit()
         
         return {

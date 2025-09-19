@@ -1,48 +1,42 @@
-"""Configuration management."""
-
-import os
+from functools import lru_cache
+from pydantic import BaseSettings, AnyHttpUrl, Field
 from typing import List
-from pydantic_settings import BaseSettings
-
 
 class Settings(BaseSettings):
-    """Application settings."""
-    
-    # Database
-    DATABASE_URL: str = "sqlite:///./data.db"
-    
-    # Security (must be provided via environment)
-    ENCRYPTION_KEY: str
-    API_KEY_PARTNER: str
-    
-    # Application
+    APP_NAME: str = "UW Wizard"
     DEBUG: bool = True
     PORT: int = 8000
+
+    DATABASE_URL: str = "sqlite:///./uwizard.db"
+    REDIS_URL: str = "redis://localhost:6379/0"
+
+    # CORS: comma-separated list (no wildcard in prod!)
+    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+
+    # AWS / S3 (private bucket)
+    AWS_REGION: str = "us-east-1"
+    AWS_ACCESS_KEY_ID: str = ""
+    AWS_SECRET_ACCESS_KEY: str = ""
+    S3_BUCKET: str = "uwizard-private"
+
+    # Webhook secrets (set the one you use)
+    DOCUSIGN_WEBHOOK_SECRET: str = ""
+    DROPBOXSIGN_WEBHOOK_SECRET: str = ""
+    CHERRY_API_KEY: str = ""
+
+    # Feature flags
     MOCK_MODE: bool = True
-    
-    # CORS
-    CORS_ORIGINS: str = "http://localhost:5000,http://127.0.0.1:5000"
-    
+
     @property
     def cors_origins_list(self) -> List[str]:
-        """Convert CORS_ORIGINS string to list."""
-        return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
-    
-    # External APIs
-    OPENAI_API_KEY: str = ""
-    PLAID_CLIENT_ID: str = ""
-    PLAID_SECRET: str = ""
-    PLAID_ENV: str = "sandbox"
-    CLEAR_API_KEY: str = ""
-    DOCUSIGN_ACCESS_TOKEN: str = ""
-    DOCUSIGN_ACCOUNT_ID: str = ""
-    DOCUSIGN_BASE_URL: str = "https://demo.docusign.net"
-    DROPBOX_SIGN_API_KEY: str = ""
-    CHERRY_SMS_API_KEY: str = ""
-    
+        return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
+
     class Config:
         env_file = ".env"
         case_sensitive = True
 
+@lru_cache()
+def get_settings() -> Settings:
+    return Settings()
 
 settings = Settings()
