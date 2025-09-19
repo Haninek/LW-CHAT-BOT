@@ -1,6 +1,6 @@
 """Background check endpoints with CLEAR, NYSCEF, and ownership verification."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
@@ -10,6 +10,7 @@ import asyncio
 
 from core.database import get_db
 from core.config import get_settings
+from core.idempotency import capture_body, require_idempotency, store_idempotent
 
 settings = get_settings()
 from core.security import verify_partner_key
@@ -47,13 +48,18 @@ class BackgroundCheckRequest(BaseModel):
     check_types: Optional[List[str]] = None  # Specific checks to run
 
 
-@router.post("/check")
+@router.post("/check", dependencies=[Depends(capture_body)])
 async def start_comprehensive_background_check(
+    req: Request,
     request: BackgroundCheckRequest,
     db: Session = Depends(get_db),
+    tenant_id=Depends(require_idempotency),
     _: bool = Depends(verify_partner_key)
 ):
     """Start comprehensive background check with CLEAR, NYSCEF, and ownership verification."""
+    
+    if getattr(req.state, "idem_cached", None):
+        return req.state.idem_cached
     
     job_id = str(uuid.uuid4())
     

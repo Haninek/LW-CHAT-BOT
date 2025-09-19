@@ -1,6 +1,6 @@
 """Deal management endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
@@ -9,6 +9,7 @@ from datetime import datetime
 
 from core.database import get_db
 from core.security import verify_partner_key
+from core.idempotency import capture_body, require_idempotency, store_idempotent
 from models.deal import Deal
 from models.merchant import Merchant
 from models.document import Document
@@ -25,13 +26,18 @@ class StartDealRequest(BaseModel):
     funding_amount: Optional[float] = None
 
 
-@router.post("/start")
+@router.post("/start", dependencies=[Depends(capture_body)])
 async def start_deal(
+    req: Request,
     request: StartDealRequest,
     db: Session = Depends(get_db),
+    tenant_id=Depends(require_idempotency),
     _: bool = Depends(verify_partner_key)
 ):
     """Start a deal for a merchant - reuse existing open deal if available."""
+    
+    if getattr(req.state, "idem_cached", None):
+        return req.state.idem_cached
     
     # Verify merchant exists
     merchant = db.query(Merchant).filter(Merchant.id == request.merchant_id).first()
@@ -46,7 +52,7 @@ async def start_deal(
     
     if existing_deal:
         # Return existing deal instead of creating new one
-        return {
+        resp = {
             "deal_id": existing_deal.id,
             "merchant_id": existing_deal.merchant_id,
             "status": existing_deal.status,
@@ -54,6 +60,8 @@ async def start_deal(
             "created_at": existing_deal.created_at.isoformat(),
             "reused": True
         }
+        await store_idempotent(req, resp)
+        return resp
     
     # Create new deal only if no open deal exists
     deal_id = str(uuid.uuid4())
@@ -69,7 +77,7 @@ async def start_deal(
     db.commit()
     db.refresh(deal)
     
-    return {
+    resp = {
         "deal_id": deal.id,
         "merchant_id": deal.merchant_id,
         "status": deal.status,
@@ -77,6 +85,8 @@ async def start_deal(
         "created_at": deal.created_at.isoformat(),
         "reused": False
     }
+    await store_idempotent(req, resp)
+    return resp
 
 
 @router.get("/{deal_id}")

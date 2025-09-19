@@ -1,6 +1,6 @@
 """Intake session endpoints."""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from datetime import datetime, timedelta
@@ -8,6 +8,7 @@ import uuid
 
 from core.database import get_db
 from core.security import verify_partner_key
+from core.idempotency import capture_body, require_idempotency, store_idempotent
 from models.intake import Intake
 from models.merchant import FieldState
 
@@ -25,13 +26,18 @@ class AnswerFieldRequest(BaseModel):
     value: str
 
 
-@router.post("/start")
+@router.post("/start", dependencies=[Depends(capture_body)])
 async def start_intake(
+    req: Request,
     request: StartIntakeRequest,
     db: Session = Depends(get_db),
+    tenant_id=Depends(require_idempotency),
     _: bool = Depends(verify_partner_key)
 ):
     """Start new intake session."""
+    
+    if getattr(req.state, "idem_cached", None):
+        return req.state.idem_cached
     
     intake_id = str(uuid.uuid4())
     intake = Intake(
@@ -43,16 +49,23 @@ async def start_intake(
     db.add(intake)
     db.commit()
     
-    return {"intake_id": intake_id}
+    resp = {"intake_id": intake_id}
+    await store_idempotent(req, resp)
+    return resp
 
 
-@router.post("/answer")
+@router.post("/answer", dependencies=[Depends(capture_body)])
 async def answer_field(
+    req: Request,
     request: AnswerFieldRequest,
     db: Session = Depends(get_db),
+    tenant_id=Depends(require_idempotency),
     _: bool = Depends(verify_partner_key)
 ):
     """Answer a field during intake and compute missing/confirm fields."""
+    
+    if getattr(req.state, "idem_cached", None):
+        return req.state.idem_cached
     
     # Required fields for complete application
     REQUIRED = [
@@ -111,9 +124,11 @@ async def answer_field(
             if days_since_verified > days:
                 confirm.append(fid)
     
-    return {
+    resp = {
         "status": "saved",
         "field_id": request.field_id,
         "missing": missing,
         "confirm": confirm
     }
+    await store_idempotent(req, resp)
+    return resp
