@@ -31,7 +31,7 @@ class Merchant(Base):
     offers = relationship("Offer", back_populates="merchant", cascade="all, delete-orphan")
     background_jobs = relationship("BackgroundJob", back_populates="merchant", cascade="all, delete-orphan")
     agreements = relationship("Agreement", back_populates="merchant", cascade="all, delete-orphan")
-    events = relationship("Event", back_populates="merchant", cascade="all, delete-orphan")
+    events = relationship("Event", back_populates="merchant", passive_deletes=True)
 
 
 class FieldState(Base):

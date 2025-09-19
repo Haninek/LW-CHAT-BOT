@@ -22,7 +22,8 @@ class Deal(Base):
     documents = relationship("Document", back_populates="deal", cascade="all, delete-orphan")
     metrics_snapshots = relationship("MetricsSnapshot", back_populates="deal", cascade="all, delete-orphan")
     offers = relationship("Offer", back_populates="deal", cascade="all, delete-orphan")
+    # NEW: Events relationship with passive deletes
+    events = relationship("Event", back_populates="deal", passive_deletes=True)
     # TODO: Update these models to use deal_id instead of merchant_id
     # agreements = relationship("Agreement", back_populates="deal", cascade="all, delete-orphan")
     # background_jobs = relationship("BackgroundJob", back_populates="deal", cascade="all, delete-orphan")
-    # events = relationship("Event", back_populates="deal", cascade="all, delete-orphan")
