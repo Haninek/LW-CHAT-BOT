@@ -3,6 +3,8 @@
 import hmac, hashlib, json
 from fastapi import APIRouter, Depends, HTTPException, Request, Header
 from sqlalchemy.orm import Session
+from sqlalchemy import text
+from pydantic import BaseModel
 from typing import Optional
 import uuid
 
@@ -59,8 +61,8 @@ async def send_for_signature(
     # Check background status unless forced
     if not force:
         bg_query = text("""
-          SELECT data FROM events
-          WHERE deal_id = :deal_id AND type = 'background.result'
+          SELECT data_json FROM events
+          WHERE deal_id = :deal_id AND event_type = 'background.result'
           ORDER BY created_at DESC LIMIT 1
         """)
         
@@ -72,7 +74,8 @@ async def send_for_signature(
                 detail="Background check missing; pass force=true to override"
             )
         
-        status = (bg_result[0] or {}).get("status")
+        bg_data = json.loads(bg_result[0]) if bg_result[0] else {}
+        status = bg_data.get("status")
         if status != "OK":
             raise HTTPException(
                 status_code=400,
@@ -94,13 +97,14 @@ async def send_for_signature(
     
     # Log signing request event
     event = Event(
-        type="sign.sent",
-        merchant_id=deal.merchant_id,
+        id=str(uuid.uuid4()),
+        tenant_id=tenant_id,
+        deal_id=deal_id,
+        event_type="sign.sent",
         data_json=json.dumps({
             "deal_id": deal_id,
             "envelope_id": envelope_id,
             "recipient_email": recipient_email,
-            "template_id": template_id,
             "force": force,
             "agreement_id": agreement_id
         })
@@ -108,7 +112,7 @@ async def send_for_signature(
     db.add(event)
     db.commit()
     
-    return {
+    result = {
         "success": True,
         "envelope_id": envelope_id,
         "recipient_email": recipient_email,
@@ -117,14 +121,37 @@ async def send_for_signature(
         "agreement_id": agreement_id,
         "message": "Document sent for signature" + (" (forced)" if force else "")
     }
+    
+    # Store idempotent result
+    store_idempotent(request, result)
+    return result
 
 
 @router.post("/webhook")
 async def signing_webhook(
+    request: Request,
     webhook_data: WebhookRequest,
+    dropbox_signature: str = Header(None, alias="X-Dropbox-Signature"),
+    docusign_signature: str = Header(None, alias="X-DocuSign-Signature"),
     db: Session = Depends(get_db)
 ):
-    """Handle signing webhook from DocuSign/Dropbox Sign."""
+    """Handle signing webhook from DocuSign/Dropbox Sign with signature verification."""
+    
+    # Verify webhook signature for security
+    body = await request.body()
+    verified = False
+    
+    if dropbox_signature:
+        verified = verify_dropboxsign(body, dropbox_signature)
+        if not verified:
+            raise HTTPException(status_code=401, detail="Invalid Dropbox Sign signature")
+    elif docusign_signature:  
+        verified = verify_docusign(body, docusign_signature)
+        if not verified:
+            raise HTTPException(status_code=401, detail="Invalid DocuSign signature")
+    else:
+        if not S.DEBUG:  # Only allow unverified webhooks in debug mode
+            raise HTTPException(status_code=401, detail="Missing webhook signature")
     
     # Find agreement by envelope ID
     agreement = db.query(Agreement).filter(

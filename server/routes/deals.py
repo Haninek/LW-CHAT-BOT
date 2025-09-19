@@ -13,7 +13,9 @@ from models.deal import Deal
 from models.merchant import Merchant
 from models.document import Document
 from models.metrics_snapshot import MetricsSnapshot
-from core.config import settings
+from core.config import get_settings
+
+settings = get_settings()
 
 router = APIRouter(prefix="/api/deals", tags=["deals"])
 

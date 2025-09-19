@@ -4,7 +4,9 @@ from fastapi import APIRouter, File, UploadFile, HTTPException
 from typing import List
 import random
 
-from core.config import settings
+from core.config import get_settings
+
+settings = get_settings()
 
 router = APIRouter()
 

@@ -6,7 +6,9 @@ from typing import Optional
 import base64
 import json
 
-from core.config import settings
+from core.config import get_settings
+
+settings = get_settings()
 
 
 def get_encryption_key() -> bytes:

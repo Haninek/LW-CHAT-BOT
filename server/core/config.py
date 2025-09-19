@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     PORT: int = 8000
 
     DATABASE_URL: str = "sqlite:///./uwizard.db"
-    REDIS_URL: str = "memory://local"  # use Upstash URL in prod
+    REDIS_URL: str = "redis://localhost:6379"  # use Upstash URL in prod
 
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
 

@@ -9,7 +9,9 @@ import json
 import asyncio
 
 from core.database import get_db
-from core.config import settings
+from core.config import get_settings
+
+settings = get_settings()
 from core.security import verify_partner_key
 from models.background_job import BackgroundJob
 from services.background_checks import (
