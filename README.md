@@ -1,161 +1,374 @@
-# Underwriting Wizard
+# UW Wizard - Automated Lending Operations Platform
 
-A comprehensive multi-tenant automated lending operations platform featuring Chad (an AI funding representative chatbot), with SMS campaign management, professional templates, and modern responsive design.
+> **Pilot-Ready:** Comprehensive multi-tenant lending platform with AI-powered underwriting, SMS campaigns, and deal management.
 
 ## 🎯 Overview
 
-The Underwriting Wizard is a deal-centric platform where all actions attach to `deal_id` rather than `merchant_id`, implementing automated lending workflows with comprehensive underwriting guardrails and California compliance requirements. The platform includes comprehensive deals management system with admin tools, background job processing, CRM integration, and secure public API endpoints with proper PII redaction.
+UW Wizard is a production-ready automated lending operations platform featuring:
 
-## 🏗️ Architecture
-
-### Core Components
-- **Backend API**: Python FastAPI server (Port 8000)
-- **Frontend**: React with TypeScript and Tailwind CSS (Port 5000)
-- **Database**: SQLite for development, PostgreSQL support for production
-- **Background Jobs**: Python worker processes
-- **Security**: JWT authentication, API key validation, PII redaction
-
-### Key Features
-- **Chad AI Chatbot**: Intelligent funding representative for customer interactions
-- **Deals Management**: Comprehensive deal tracking and processing
-- **SMS Campaigns**: Automated campaign management and tracking
-- **Background Checks**: Integrated identity verification and risk assessment
-- **Document Processing**: Automated document analysis and parsing
-- **Secure APIs**: Public endpoints with PII redaction for frontend access
-- **Admin Tools**: Background review, merchant management, and system monitoring
+- **Chad AI Assistant** - Intelligent funding representative chatbot
+- **Deal-Centric Architecture** - Multi-tenant isolation with comprehensive audit trails  
+- **Underwriting Automation** - California-compliant risk assessment and offer generation
+- **Document Processing** - Secure bank statement analysis with antivirus scanning
+- **SMS Campaign Management** - Rate-limited bulk messaging with compliance controls
+- **E-Signature Integration** - DocuSign/Dropbox Sign with webhook verification
+- **Background Verification** - CLEAR, NYSCEF, and business ownership checks
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 - Python 3.11+
-- Node.js 18+
-- SQLite (for development)
+- Node.js 20+
+- Redis (optional - memory fallback included)
 
 ### Installation
 
-1. **Backend Setup**
 ```bash
+# Clone and setup
+git clone <repository>
+cd uw-wizard
+
+# Install backend dependencies
 cd server
-python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-```
+pip install -r requirements.txt
 
-2. **Frontend Setup**
-```bash
-cd web
+# Install frontend dependencies  
+cd ../web
 npm install
-npm run dev
+
+# Start services
+cd ../server && uvicorn main:app --host 0.0.0.0 --port 8000 --reload &
+cd ../web && npm run dev
 ```
 
-### Access Points
+Access the application:
 - **Frontend**: http://localhost:5000
-- **Backend API**: http://localhost:8000
-- **API Health Check**: http://localhost:8000/api/healthz
-- **API Documentation**: http://localhost:8000/docs (FastAPI auto-generated)
+- **Backend API**: http://localhost:8000  
+- **API Docs**: http://localhost:8000/docs
 
-## 📊 API Endpoints
+## 📋 API Reference
 
-### Public Endpoints (PII Redacted)
-- `GET /api/public/deals` - List deals with masked merchant data
-- `GET /api/healthz` - Health check
-- `GET /api/readyz` - Readiness check
-
-### Authenticated Endpoints
-- `GET /api/public/deals/{deal_id}` - Get detailed deal information
-- `POST /api/deals/{deal_id}/accept` - Accept deal offer
-- `POST /api/deals/{deal_id}/decline` - Decline deal offer
-- `GET /api/admin/background-review` - Admin background review interface
-- `GET /api/merchants` - Merchant management
-- `POST /api/background/check` - Initiate background checks
-
-### Security Features
-- **PII Redaction**: Phone numbers masked to last 4 digits, emails masked, addresses removed
-- **Authentication**: API key validation for sensitive endpoints
-- **Route Separation**: Public read-only vs authenticated endpoints
-- **Data Protection**: Sensitive fields automatically redacted in public responses
-
-## 💼 Use Cases
-
-### Primary Workflows
-1. **Deal Processing**: Complete lending workflow from application to funding
-2. **Risk Assessment**: Automated underwriting with configurable guardrails
-3. **Customer Communication**: AI-powered chat interactions with Chad
-4. **Document Management**: Automated parsing and verification
-5. **Compliance**: California lending compliance and regulatory requirements
-
-### Admin Functions
-- Background check review and approval
-- Merchant status management
-- Deal pipeline monitoring
-- System configuration and settings
-
-## 🗂️ Project Structure
-
-```
-├── server/              # Python FastAPI backend
-│   ├── core/           # Core configuration and middleware
-│   ├── models/         # Database models
-│   ├── routes/         # API endpoints
-│   ├── services/       # Business logic services
-│   └── main.py         # Application entry point
-├── web/                # React frontend
-│   ├── src/
-│   │   ├── components/ # Reusable React components
-│   │   ├── pages/      # Page components
-│   │   ├── lib/        # Utilities and API client
-│   │   └── state/      # State management
-│   └── package.json    # Frontend dependencies
-├── worker/             # Background job processing
-├── scripts/            # Utility scripts
-└── README.md           # This file
+### Authentication
+All API requests require these headers:
+```bash
+X-Tenant-ID: <tenant_identifier>
+Idempotency-Key: <unique_request_key>
+Content-Type: application/json
 ```
 
-## 🔧 Configuration
+### Core Endpoints
 
-### Environment Variables
-- `DATABASE_URL` - Database connection string
-- `API_KEY_PARTNER` - Partner API authentication key
-- `CORS_ORIGIN` - Allowed CORS origins (default: *)
+#### Deal Management
+```bash
+# Start a new deal or find existing
+POST /api/deals/start
+{
+  "merchant_hint": {
+    "phone": "+19735550188",
+    "legal_name": "Maple Deli LLC"
+  },
+  "create_if_missing": true
+}
+```
 
-### Development Defaults
-- All external API integrations have safe placeholder values
-- Database tables auto-created on startup
-- Comprehensive logging enabled
-- Rate limiting configured with generous development limits
+#### Intake Process
+```bash
+# Initialize intake session
+POST /api/intake/start  
+{
+  "merchant_id": "mer_123",
+  "deal_id": "deal_456"
+}
 
-## 🛡️ Security
+# Submit intake answers
+POST /api/intake/answer
+{
+  "merchant_id": "mer_123", 
+  "deal_id": "deal_456",
+  "source": "intake",
+  "answers": [
+    {
+      "field_id": "owner.ssn_last4",
+      "value": "1234"
+    }
+  ]
+}
+```
+
+#### Document Upload
+```bash
+# Upload exactly 3 PDF bank statements
+POST /api/documents/bank/upload?merchant_id=mer_123&deal_id=deal_456
+Content-Type: multipart/form-data
+
+files: [statement1.pdf, statement2.pdf, statement3.pdf]
+```
+
+#### Offer Generation  
+```bash
+# Generate underwriting offers
+POST /api/deals/{deal_id}/offers
+{
+  "avg_monthly_revenue": 80000,
+  "avg_daily_balance_3m": 12000,
+  "total_nsf_3m": 1,
+  "total_days_negative_3m": 2
+}
+```
+
+#### Background Checks
+```bash
+# Run comprehensive background verification
+POST /api/background/check
+{
+  "merchant_id": "mer_123",
+  "deal_id": "deal_456", 
+  "person": {
+    "first_name": "John",
+    "last_name": "Smith",
+    "date_of_birth": "1980-01-01",
+    "ssn_last4": "1234",
+    "email": "john@example.com",
+    "phone": "+19735550188"
+  },
+  "business": {
+    "legal_name": "Maple Deli LLC",
+    "ein": "12-3456789", 
+    "state": "CA",
+    "formation_date": "2020-01-01"
+  }
+}
+
+# Check background verification status
+GET /api/background/jobs/{job_id}
+```
+
+#### E-Signatures
+```bash
+# Send document for signature  
+POST /api/sign/send?deal_id=deal_456&recipient_email=owner@example.com&force=false
+
+# Webhook endpoint (configured with provider)
+POST /api/sign/webhook
+```
+
+#### SMS Campaigns
+```bash
+# Send SMS campaign (rate limited: 2000/minute/tenant)
+POST /api/sms/cherry/send
+{
+  "campaignName": "Pilot Campaign",
+  "messages": [
+    {
+      "to": "+19735550188",
+      "body": "Hi from UW Wizard",
+      "merchant_id": "mer_123"
+    }
+  ]
+}
+
+# Handle inbound SMS and STOP commands
+POST /api/sms/cherry/webhook  
+{
+  "type": "inbound",
+  "from": "+19735550188", 
+  "text": "STOP"
+}
+```
+
+### Response Format
+
+#### Success Response
+```json
+{
+  "status": "success",
+  "data": { ... },
+  "timestamp": "2025-09-19T18:42:00Z"
+}
+```
+
+#### Error Response  
+```json
+{
+  "error": "Validation failed",
+  "detail": "Missing required field: merchant_id",
+  "timestamp": "2025-09-19T18:42:00Z"
+}
+```
+
+#### Underwriting Response
+```json
+{
+  "offers": [
+    {
+      "id": "offer_789",
+      "tier": 1,
+      "amount": 64000,
+      "factor": 0.8,
+      "fee": 1.15,
+      "payback_amount": 73600,
+      "term_days": 90,
+      "daily_payment": 818,
+      "risk_score": 0.65,
+      "underwriting_decision": "approved",
+      "terms_compliant": true,
+      "rationale": "Based on $80,000/month revenue, 90-day term"
+    }
+  ],
+  "underwriting_decision": "approved",
+  "underwriting_summary": {
+    "approved": true,
+    "risk_score": 0.65,
+    "ca_compliant": true,
+    "max_offer_amount": 100000
+  }
+}
+```
+
+## 🔒 Security Features
+
+### Idempotency Protection
+- All POST requests protected with `Idempotency-Key` headers
+- Request body hashing prevents payload tampering
+- Redis-first with in-memory fallback for high availability
+- Automatic response caching and replay
+
+### Rate Limiting
+- **SMS**: 2000 messages per minute per tenant
+- **API**: Configurable per-endpoint limits
+- Token bucket algorithm with sliding window
+- Memory fallback when Redis unavailable
+
+### Webhook Security
+- HMAC signature verification (HMAC-SHA256)
+- DocuSign and Dropbox Sign support
+- Webhook deduplication prevents replay attacks
+- Required signatures (no debug bypass)
 
 ### Data Protection
-- **PII Redaction**: Automatic masking of sensitive personal information
-- **Authentication**: Multi-layer security with API keys and JWT tokens
-- **Route Security**: Clear separation between public and authenticated endpoints
-- **Input Validation**: Comprehensive data validation and sanitization
+- AES-256 encryption for sensitive data
+- Antivirus scanning for uploaded documents  
+- Private document storage with presigned URLs
+- Comprehensive audit logging
 
-### Compliance
-- California lending regulation compliance
-- Secure document handling and storage
-- Audit trail for all deal activities
-- Privacy-first data handling practices
+## 🏗️ Architecture
 
-## 🔄 Deployment
+### Deal-Centric Design
+- All operations attach to `deal_id` for proper isolation
+- Multi-tenant architecture with `tenant_id` tracking
+- Comprehensive event audit trail
+- Status progression: `open` → `processing` → `approved/declined`
 
-The platform is configured for production deployment with:
-- **Autoscale**: Serverless deployment for cost efficiency
-- **Health Monitoring**: Built-in health and readiness checks
-- **Database Migration**: Automatic schema management
-- **Environment Configuration**: Production-ready defaults
+### Underwriting Guardrails
+- **California Compliance**: Regulatory requirement enforcement
+- **Risk Scoring**: Multi-factor assessment with violation tracking
+- **Automated Workflows**: Approval/decline/manual review routing
+- **Deal Term Validation**: Fee caps, term limits, amount restrictions
 
-## 📝 Contributing
+### Fallback Systems
+- **Database**: SQLite → PostgreSQL
+- **Cache**: Memory → Redis  
+- **Storage**: Local filesystem → S3
+- **Rate Limiting**: Memory → Redis
+- **Idempotency**: Memory → Redis
 
-1. Follow existing code structure and patterns
-2. Ensure all security measures are maintained
-3. Test both public and authenticated endpoints
-4. Maintain PII redaction in all public responses
-5. Update documentation for any API changes
+## 🧪 Testing
 
-## 📄 License
+### Smoke Test Sequence
+```bash
+# Health check
+curl -s http://localhost:8000/api/healthz
 
-MIT License - see LICENSE file for details
+# Start deal (save MERCHANT_ID and DEAL_ID from response)
+curl -s -X POST http://localhost:8000/api/deals/start \
+  -H "Content-Type: application/json" \
+  -H "X-Tenant-ID: T1" \
+  -H "Idempotency-Key: k1" \
+  -d '{"merchant_hint":{"phone":"+19735550188","legal_name":"Maple Deli LLC"},"create_if_missing":true}'
+
+# Submit intake answer  
+curl -s -X POST http://localhost:8000/api/intake/answer \
+  -H "Content-Type: application/json" \
+  -H "X-Tenant-ID: T1" \
+  -H "Idempotency-Key: k2" \
+  -d '{"merchant_id":"$MID","deal_id":"$DID","source":"intake","answers":[{"field_id":"owner.ssn_last4","value":"1234"}]}'
+
+# Upload 3 PDFs
+curl -s -X POST "http://localhost:8000/api/documents/bank/upload?merchant_id=$MID&deal_id=$DID" \
+  -F "files=@one.pdf" -F "files=@two.pdf" -F "files=@three.pdf" \
+  -H "X-Tenant-ID: T1" -H "Idempotency-Key: k3"
+
+# Generate offers
+curl -s -X POST "http://localhost:8000/api/deals/$DID/offers" \
+  -H "Content-Type: application/json" \
+  -H "X-Tenant-ID: T1" \
+  -H "Idempotency-Key: k4" -d "{}"
+
+# Test idempotency (repeat any request with same key → same response)
+```
+
+## 📊 Monitoring
+
+### Health Endpoints
+- `GET /api/healthz` - Basic health check
+- `GET /api/readyz` - Readiness with dependency status
+
+### Logging
+- Structured JSON logs with correlation IDs
+- Request/response tracking  
+- Performance metrics
+- Error alerting
+
+### Metrics  
+- Deal conversion rates
+- Underwriting approval rates
+- SMS delivery rates
+- API response times
+- Background check success rates
+
+## 🚀 Deployment
+
+### Environment Variables
+```bash
+# Required
+APP_NAME=UW Wizard
+PORT=8000
+DATABASE_URL=postgresql://user:pass@host:5432/uwizard
+
+# Optional (graceful fallbacks)
+REDIS_URL=redis://localhost:6379/0
+AWS_ACCESS_KEY_ID=AKIA...
+AWS_SECRET_ACCESS_KEY=...
+S3_BUCKET=uwizard-private
+DOCUSIGN_WEBHOOK_SECRET=your-webhook-secret
+CHERRY_API_KEY=your-sms-api-key
+```
+
+### Production Checklist
+- [ ] Set `DEBUG=false`
+- [ ] Configure real Redis URL
+- [ ] Set up PostgreSQL database
+- [ ] Configure S3 bucket with proper IAM
+- [ ] Set webhook secrets for e-signature providers
+- [ ] Configure SMS provider API keys
+- [ ] Set up monitoring and alerting
+- [ ] Review CORS origins for security
+- [ ] Test all idempotency scenarios
+- [ ] Verify rate limiting enforcement
+
+## 📞 Support
+
+### Issues & Questions
+- Create GitHub issues for bugs or feature requests
+- Include request correlation ID for faster debugging
+- Provide minimal reproduction steps
+
+### API Integration Help
+- Review API documentation at `/docs` endpoint  
+- Check request/response examples above
+- Verify header requirements (Tenant-ID, Idempotency-Key)
+- Test with provided smoke test sequence
 
 ---
 
-**Underwriting Wizard** - Streamlining lending operations with intelligent automation and comprehensive security.
+**UW Wizard** - Powering the future of automated lending operations with security, compliance, and reliability at scale.

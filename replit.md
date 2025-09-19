@@ -1,104 +1,171 @@
-# LendWisely Chat Bot API - Replit Setup
+# UW Wizard - Underwriting Platform (Pilot Ready)
 
 ## Project Overview
-A production-ready Express + TypeScript API for LendWisely's chat bot functionality, including bank statement analysis, offer generation, SMS notifications, and e-signature workflows. This project has been successfully configured to run in the Replit environment.
+A comprehensive multi-tenant automated lending operations platform featuring Chad (AI funding representative chatbot), SMS campaign management, professional templates, and modern responsive design. The platform implements "minimum automation" with a deal-centric architecture where all actions attach to deal_id rather than merchant_id, with comprehensive underwriting guardrails and California compliance requirements.
 
 ## Current Status
-✅ **Project is fully configured and running**
-- Node.js Express API server running on port 5000
-- All dependencies installed and working
-- Database connected and tables created
-- Health and readiness endpoints functional
-- Deployment configuration set up
+✅ **Pilot-ready deployment on Replit**
+- Python FastAPI backend running on port 8000
+- React frontend with Vite running on port 5000 
+- Complete idempotency system with Redis fallback to memory
+- Local storage fallback (no S3 required in dev)
+- Comprehensive underwriting guardrails with CA compliance
+- All critical POST routes protected with idempotency
+- SMS rate limiting with in-memory fallback
+- Webhook signature verification enforced
+- Event standardization with data_json fields
 
 ## Architecture
-The project consists of two main components:
-1. **Node.js Express API** (primary service) - Financial services API
-2. **Python FastAPI** (supporting service) - Additional functionality
 
-### Node.js Express API (Port 5000)
-- **Status**: ✅ Running successfully
-- **URL**: http://0.0.0.0:5000
-- **Health Check**: `/healthz` - Returns server health status
-- **Readiness Check**: `/readyz` - Returns service readiness (shows false for external services without real API keys)
+### Backend: Python FastAPI (Port 8000)
+- **Status**: ✅ Running successfully  
+- **URL**: http://0.0.0.0:8000
+- **Features**: Complete lending operations with underwriting, document processing, SMS campaigns, e-signatures
+- **Security**: Idempotency protection, rate limiting, webhook verification
+- **Database**: SQLite fallback with PostgreSQL production capability
+- **Storage**: Local filesystem with S3 upgrade path
 
-### Available API Endpoints
-- `/healthz` - Health check
-- `/readyz` - Readiness check  
-- `/api/bank/parse` - Bank statement analysis
-- `/api/offers` - Offer generation
-- `/api/plaid/link-token` - Plaid integration
-- `/api/sms/cherry/webhook` - SMS webhooks
-- `/api/sign/webhook` - E-signature webhooks
-- `/api/background/check` - Background checks
-- `/api/events` - Events feed
+### Frontend: React + Vite (Port 5000) 
+- **Status**: ✅ Configured for development
+- **URL**: http://0.0.0.0:5000  
+- **Purpose**: Modern responsive UI for Chad chatbot and deal management
 
-### Python FastAPI (Port 8081)
-- **Status**: ✅ Configured but not actively running
-- **Configuration**: Available to run on port 8081 if needed
-- **Purpose**: Supporting service for additional functionality
+## Core Features
+
+### Deal-Centric Operations
+- All actions attach to `deal_id` for proper multi-tenant isolation
+- Comprehensive audit trail through Event system
+- Status tracking: open → processing → approved/declined
+
+### Underwriting Guardrails
+- California compliance requirements enforced
+- Risk scoring with multiple violation levels  
+- Automated approval/decline/manual review workflows
+- Deal term validation for regulatory compliance
+
+### Document Processing
+- Hardened 3-PDF bank statement upload with size/type validation
+- Antivirus scanning with graceful fallback
+- Automated metrics extraction and snapshot generation
+- Private document storage with presigned access URLs
+
+### SMS Campaign Management  
+- Rate limiting: 2000 messages/minute per tenant
+- Automatic STOP opt-out compliance
+- Campaign tracking with delivery confirmation
+- Consent management for regulatory compliance
+
+### E-Signature Integration
+- DocuSign and Dropbox Sign webhook support
+- HMAC signature verification for security
+- Background check gating (force override available)
+- Contract completion tracking with audit events
+
+### Background Checks
+- CLEAR identity and criminal verification
+- NYSCEF court records integration  
+- Business ownership verification
+- Flag-only results for compliance purposes
 
 ## Environment Configuration
-The project uses environment variables for configuration with safe defaults for development:
 
-### Development Defaults (No API keys required)
-- `PORT=5000` - Server runs on port 5000 for Replit frontend
-- `NODE_ENV=development` - Development mode
-- `CORS_ORIGIN=*` - Allow all origins for development
-- `API_KEY_PARTNER=development-key` - Development API key
-- All external service API keys have placeholder values
-
-### Database
-- Currently using SQLite database for development 
-- Replit PostgreSQL database is available and can be configured
-- Tables automatically created on startup
-- Database connection is configurable via DATABASE_URL environment variable
-
-## Recent Setup Changes (September 2025)
-1. **Port Configuration**: Changed from 8080 to 5000 for Replit frontend compatibility
-2. **Host Binding**: Configured to bind to 0.0.0.0 for proper Replit access
-3. **Environment Flexibility**: Made external API keys optional for development
-4. **Rate Limiter**: Fixed proxy trust configuration for proper client IP handling
-5. **Dependencies**: All Node.js and Python dependencies installed successfully
-6. **Deployment**: Configured for autoscale deployment with build steps
-
-## User Preferences & Setup Notes
-- Development environment prioritizes ease of setup over production security
-- External API integrations (OpenAI, Plaid, DocuSign, Cherry SMS) are optional for basic functionality
-- Server logs are comprehensive and show all available endpoints on startup
-- Rate limiting is configured but allows generous limits for development
-
-## How to Use
-1. **Server is already running** - The Express API is live on port 5000
-2. **Test endpoints**: Use `/healthz` for basic health checks
-3. **API functionality**: Most endpoints will work with placeholder data, but full functionality requires real API keys
-4. **Adding API keys**: Use the secrets management system for production API keys
-
-## Dependencies Status
-- ✅ Node.js 20 installed
-- ✅ Python 3.11 available  
-- ✅ All npm packages installed
-- ✅ All Python packages installed
-- ✅ TypeScript compilation working
-- ✅ Database connection established
-
-## Project Structure
+### Development Defaults (Replit Ready)
 ```
-src/                    # Node.js/TypeScript source
-├── lib/               # Core utilities (env, db)
-├── middleware/        # Express middleware
-├── models/           # Data models  
-├── repositories/     # Data access layer
-├── routes/           # API endpoints
-├── services/         # External service integrations
-└── types/            # TypeScript type definitions
-
-app/                   # Python FastAPI source
-├── core/             # Core configuration
-└── routes/           # API routes
-
-scripts/              # Utility scripts
-tests/                # Test files
+APP_NAME=UW Wizard
+DEBUG=true
+PORT=8000
+DATABASE_URL=sqlite:///./uwizard.db
+REDIS_URL=memory://local
+CORS_ORIGINS=*
+MOCK_MODE=true
 ```
 
-This setup provides a robust development environment that can be easily extended with real API keys for full production functionality.
+### Production Secrets (Optional)
+```
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+S3_BUCKET=uwizard-private
+DOCUSIGN_WEBHOOK_SECRET=
+DROPBOXSIGN_WEBHOOK_SECRET=
+CHERRY_API_KEY=
+```
+
+## API Endpoints
+
+### Core Operations
+- `POST /api/deals/start` - Create/find deal with merchant matching
+- `POST /api/intake/start` - Initialize intake session  
+- `POST /api/intake/answer` - Save intake responses with validation
+- `POST /api/documents/bank/upload` - Upload 3 PDF statements with validation
+- `POST /api/deals/{deal_id}/offers` - Generate underwriting offers
+- `POST /api/background/check` - Run comprehensive background verification
+- `POST /api/sign/send` - Send documents for e-signature
+- `POST /api/sms/cherry/send` - Send SMS campaigns with rate limiting
+
+### Webhooks & Integration
+- `POST /api/sign/webhook` - Handle e-signature completion webhooks
+- `POST /api/sms/cherry/webhook` - Handle inbound SMS and STOP commands
+- `GET /api/background/jobs/{job_id}` - Check background verification status
+- `GET /api/healthz` - Health check endpoint
+
+## Security Features
+
+### Idempotency Protection
+- All critical POST routes protected with Idempotency-Key headers
+- Redis-first with in-memory fallback for Replit environment
+- Request body hashing for payload verification
+- Automatic response caching and replay
+
+### Rate Limiting
+- SMS: 2000 messages/minute per tenant with memory fallback
+- Token bucket algorithm with sliding window
+- Graceful degradation when Redis unavailable
+
+### Webhook Security  
+- HMAC signature verification for DocuSign/Dropbox Sign
+- Signature verification always enforced (no debug bypass)
+- Webhook deduplication via Redis/memory store
+- Automatic event ID generation for tracking
+
+## Recent Updates (September 2025)
+1. **Final Patch Applied**: Complete pilot readiness implementation
+2. **Security Hardening**: SMS rate limiting enforced, webhook signatures required
+3. **Idempotency Complete**: All critical routes protected with fallback mechanisms
+4. **Event Standardization**: All events use data_json with tenant/deal tracking
+5. **Storage Fallback**: Local file system with S3 upgrade path
+6. **Compliance Ready**: CA underwriting guardrails active
+
+## Development Workflow
+
+### Startup Commands
+```bash
+# Backend (Terminal 1)
+cd server && python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+# Frontend (Terminal 2) 
+cd web && npm run dev
+```
+
+### Project Structure
+```
+server/                 # Python FastAPI backend
+├── core/              # Configuration, database, security
+├── models/            # SQLAlchemy data models
+├── routes/            # API endpoint handlers  
+├── services/          # External service integrations
+└── main.py           # FastAPI application entry
+
+web/                   # React frontend
+├── src/              # React components and logic
+├── public/           # Static assets
+└── package.json      # Frontend dependencies
+```
+
+## User Preferences & Notes
+- Development environment optimized for Replit deployment
+- External API integrations gracefully degrade without real keys
+- Comprehensive logging for debugging and monitoring
+- Deal-centric architecture ensures proper multi-tenant isolation
+- All compliance and security guardrails active by default
+
+This platform provides a production-ready lending operations solution with comprehensive automation, security, and compliance features suitable for pilot deployment.
