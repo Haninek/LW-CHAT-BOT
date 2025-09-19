@@ -125,12 +125,14 @@ async def start_comprehensive_background_check(
         
         db.commit()
         
-        return {
+        resp = {
             "job_id": job.id,
             "status": "completed",
             "result": aggregated,
             "message": "Background checks completed with flag-only results for compliance"
         }
+        await store_idempotent(req, resp)
+        return resp
     
     except Exception as e:
         # Update job with error status
@@ -138,12 +140,14 @@ async def start_comprehensive_background_check(
         job.result_json = json.dumps({"error": str(e)})
         db.commit()
         
-        return {
+        resp = {
             "job_id": job.id,
             "status": "error",
             "error": str(e),
             "message": "Background check failed"
         }
+        await store_idempotent(req, resp)
+        return resp
 
 
 @router.get("/jobs/{job_id}")

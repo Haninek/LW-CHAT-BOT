@@ -102,6 +102,6 @@ async def webhook(req: Request, db: Session = Depends(get_db)):
             db.add(Consent(phone=phone, channel="sms", status="opt_out"))
         # best-effort merchant link
         m = db.query(Merchant).filter(Merchant.phone == phone).first()
-        db.add(Event(tenant_id=None, merchant_id=getattr(m, "id", None), deal_id=None, type="sms.stop", data={"from": phone}))
+        db.add(Event(tenant_id=None, merchant_id=getattr(m, "id", None), deal_id=None, type="sms.stop", data_json=json.dumps({"from": phone})))
         db.commit()
     return {"ok": True}
