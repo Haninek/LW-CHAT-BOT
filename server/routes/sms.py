@@ -33,20 +33,29 @@ FOOTER = " Reply STOP to opt out."
 PHONE_RE = re.compile(r"^\+?[1-9]\d{7,14}$")
 
 async def rate_limit(tenant_id: str, count: int, limit: int = 2000, window_sec: int = 60):
-    # simple token bucket per tenant
-    if not R:
-        # Skip rate limiting if Redis is not available
-        return
+    # simple token bucket per tenant with in-memory fallback
+    if R:
+        try:
+            key = f"rt:sms:{tenant_id}"
+            pipe = R.pipeline()
+            now = int(time.time())
+            pipe.zremrangebyscore(key, 0, now - window_sec)
+            pipe.zadd(key, {str(uuid.uuid4()): now} , nx=True)
+            pipe.zcard(key)
+            pipe.expire(key, window_sec + 5)
+            _, _, current, _ = await pipe.execute()
+            if int(current) + count > limit:
+                raise HTTPException(429, detail="Rate limit exceeded for SMS")
+            return
+        except Exception:
+            # Fall through to memory store on Redis errors
+            pass
     
-    key = f"rt:sms:{tenant_id}"
-    pipe = R.pipeline()
-    now = int(time.time())
-    pipe.zremrangebyscore(key, 0, now - window_sec)
-    pipe.zadd(key, {str(uuid.uuid4()): now} , nx=True)
-    pipe.zcard(key)
-    pipe.expire(key, window_sec + 5)
-    _, _, current, _ = await pipe.execute()
-    if int(current) + count > limit:
+    # In-memory rate limiting fallback for pilot environment
+    key = f"rt:sms:{tenant_id}:{int(time.time())//window_sec}"
+    from core.idempotency import _memory_store
+    _memory_store[key] = _memory_store.get(key, 0) + count
+    if _memory_store[key] > limit:
         raise HTTPException(429, detail="Rate limit exceeded for SMS")
 
 @router.post("/send", dependencies=[Depends(capture_body)])

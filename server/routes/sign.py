@@ -150,8 +150,8 @@ async def signing_webhook(
         if not verified:
             raise HTTPException(status_code=401, detail="Invalid DocuSign signature")
     else:
-        if not S.DEBUG:  # Only allow unverified webhooks in debug mode
-            raise HTTPException(status_code=401, detail="Missing webhook signature")
+        # Always require webhook signature for pilot security
+        raise HTTPException(status_code=401, detail="Missing webhook signature")
     
     # Check for webhook deduplication AFTER verification 
     dedup_key = f"wh:{webhook_data.envelope_id}:{webhook_data.event_type}"
