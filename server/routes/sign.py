@@ -62,7 +62,7 @@ async def send_for_signature(
     if not force:
         bg_query = text("""
           SELECT data_json FROM events
-          WHERE deal_id = :deal_id AND event_type = 'background.result'
+          WHERE deal_id = :deal_id AND type = 'background.result'
           ORDER BY created_at DESC LIMIT 1
         """)
         
@@ -100,7 +100,7 @@ async def send_for_signature(
         id=str(uuid.uuid4()),
         tenant_id=tenant_id,
         deal_id=deal_id,
-        event_type="sign.sent",
+        type="sign.sent",
         data_json=json.dumps({
             "deal_id": deal_id,
             "envelope_id": envelope_id,
@@ -123,7 +123,7 @@ async def send_for_signature(
     }
     
     # Store idempotent result
-    store_idempotent(request, result)
+    await store_idempotent(request, result)
     return result
 
 
@@ -136,6 +136,11 @@ async def signing_webhook(
     db: Session = Depends(get_db)
 ):
     """Handle signing webhook from DocuSign/Dropbox Sign with signature verification."""
+    
+    # Check for webhook deduplication first
+    dedup_key = f"webhook:{webhook_data.envelope_id}:{webhook_data.event_type}"
+    if getattr(request.state, "idem_cache", {}).get(dedup_key):
+        return {"status": "already_processed"}
     
     # Verify webhook signature for security
     body = await request.body()
@@ -169,8 +174,10 @@ async def signing_webhook(
         
         # Log completion event
         event = Event(
-            type="contract.completed",
-            merchant_id=agreement.merchant_id,
+            id=str(uuid.uuid4()),
+            type="contract.completed", 
+            tenant_id=agreement.merchant_id,  # Use merchant_id as tenant for events
+            deal_id=None,  # Could be derived from agreement if needed
             data_json=json.dumps({
                 "agreement_id": agreement.id,
                 "envelope_id": webhook_data.envelope_id,
@@ -184,8 +191,10 @@ async def signing_webhook(
         
         # Log declined/voided event
         event = Event(
+            id=str(uuid.uuid4()),
             type=f"contract.{webhook_data.status}",
-            merchant_id=agreement.merchant_id,
+            tenant_id=agreement.merchant_id,  # Use merchant_id as tenant for events
+            deal_id=None,  # Could be derived from agreement if needed
             data_json=json.dumps({
                 "agreement_id": agreement.id,
                 "envelope_id": webhook_data.envelope_id,
@@ -195,5 +204,9 @@ async def signing_webhook(
         db.add(event)
     
     db.commit()
+    
+    # Mark as processed to prevent duplicates
+    if hasattr(request.state, "idem_cache"):
+        request.state.idem_cache[dedup_key] = True
     
     return {"status": "processed"}
