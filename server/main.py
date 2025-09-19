@@ -97,9 +97,9 @@ def create_app() -> FastAPI:
     app.include_router(health.router, prefix="/api", tags=["health"])
     app.include_router(connectors.router, prefix="/api/connectors", tags=["connectors"])
     app.include_router(merchants.router, prefix="/api/merchants", tags=["merchants"])
-    app.include_router(deals.router, tags=["deals"])
-    app.include_router(documents.router, tags=["documents"])
-    app.include_router(underwriting.router, tags=["underwriting"])
+    app.include_router(deals.router, prefix="/api", tags=["deals"])
+    app.include_router(documents.router, prefix="/api", tags=["documents"])
+    app.include_router(underwriting.router, prefix="/api", tags=["underwriting"])
     app.include_router(intake.router, prefix="/api/intake", tags=["intake"])
     app.include_router(ingest.router, prefix="/api/ingest", tags=["ingest"])
     app.include_router(bank.router, prefix="/api/bank", tags=["documents"])
@@ -110,7 +110,7 @@ def create_app() -> FastAPI:
     app.include_router(events.router, prefix="/api/events", tags=["events"])
     app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
     app.include_router(queue.router, prefix="/api/queue", tags=["queue"])
-    app.include_router(sms.router)
+    app.include_router(sms.router, prefix="/api")
     # Public deals endpoints for frontend (read-only, limited data)
     app.include_router(deals_read.router, prefix="/api/public/deals", tags=["deals.public"])
     app.include_router(deals_actions.router, prefix="/api/deals", tags=["deals.actions"])
@@ -126,6 +126,7 @@ app = create_app()
 
 
 if __name__ == "__main__":
+    settings = get_settings()
     uvicorn.run(
         "main:app",
         host="0.0.0.0",

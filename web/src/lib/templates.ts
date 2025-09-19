@@ -5,52 +5,64 @@ import { Template, Persona, Merchant } from '../types';
 export const defaultTemplates: Template[] = [
   {
     id: "intake_welcome",
+    channel: "chat",
     label: "Welcome Message",
     text: "Great to meet you! I'll grab just the basics and keep it quick."
   },
   {
     id: "confirm_address", 
+    channel: "chat",
     label: "Address Confirmation",
     text: "Still at {{business.address}}, {{business.city}}, {{business.state}} {{business.zip}}?"
   },
   {
     id: "ask_ein",
+    channel: "chat",
     label: "EIN Request",
     text: "What's your EIN (9 digits)? You can skip if you don't have it handy."
   },
   {
     id: "ask_business_name",
+    channel: "chat",
     label: "Business Name Request", 
     text: "What's the legal name of your business?"
   },
   {
     id: "ask_owner_info",
+    channel: "chat",
     label: "Owner Information Request",
     text: "I'll need some basic info about the business owner."
   },
   {
     id: "ask_contact_info",
+    channel: "chat",
     label: "Contact Information Request",
     text: "Finally, let's get your contact details."
   },
   {
     id: "confirm_phone",
+    channel: "chat",
     label: "Phone Confirmation",
     text: "Is {{contact.phone}} still the best number to reach you?"
   },
   {
     id: "confirm_email", 
+    channel: "chat",
     label: "Email Confirmation",
     text: "Should I send updates to {{contact.email}}?"
   },
   {
     id: "intake_complete",
+    channel: "chat",
     label: "Intake Complete",
     text: "Perfect! I have everything I need. {{owner.first}}, you're all set!"
   }
 ];
 
 export const defaultPersona: Persona = {
+  id: 'default',
+  displayName: 'Chad - AI Assistant',
+  signature: 'Best regards,\nChad',
   style: "friendly",
   reading: "8th", 
   emoji: "med"

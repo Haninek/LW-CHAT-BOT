@@ -1,5 +1,4 @@
 import { Rule, Merchant, Template, Persona } from '../types';
-import { v4 as uuidv4 } from 'uuid';
 import { defaultTemplates, defaultPersona } from './templates';
 
 // Seed rules as specified in the brief

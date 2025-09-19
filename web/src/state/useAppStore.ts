@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { Rule, Persona, Merchant, FieldId, RuleEngineResult } from '../types'
+import { Rule, Persona, Merchant, FieldId, RuleEngineResult, Template } from '../types'
 import { storage, initializeSeedData } from '../lib/seedData'
 
 export type ChatMessage = {
@@ -32,8 +32,10 @@ interface AppState {
   
   // Rules - core data
   rules: Rule[]
+  templates: Template[]
   persona: Persona
   setRules: (rules: Rule[]) => void
+  setTemplates: (templates: Template[]) => void
   setPersona: (persona: Persona) => void
   addRule: (rule: Rule) => void
   updateRule: (id: string, rule: Partial<Rule>) => void
@@ -82,6 +84,7 @@ export const useAppStore = create<AppState>()(
 
       // Rules - core data
       rules: [],
+      templates: [],
       persona: { 
         id: 'default',
         displayName: 'Chad - AI Assistant',
@@ -93,6 +96,10 @@ export const useAppStore = create<AppState>()(
       setRules: (rules) => {
         set({ rules });
         storage.setRules(rules);
+      },
+      setTemplates: (templates) => {
+        set({ templates });
+        storage.setTemplates(templates);
       },
       setPersona: (persona) => {
         set({ persona });

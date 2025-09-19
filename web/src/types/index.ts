@@ -69,6 +69,9 @@ export type MessageTemplate = {
   text: string;
 };  // tokens like {{business.legal_name}} {{owner.first}}
 
+// Alias for backwards compatibility
+export type Template = MessageTemplate;
+
 // UI types
 export type ResolverResult = {
   toAsk: FieldId[];
