@@ -12,7 +12,7 @@ class Deal(Base):
     
     id = Column(String, primary_key=True, index=True)
     merchant_id = Column(String, ForeignKey("merchants.id"), nullable=False, index=True)
-    status = Column(String, default="active")  # active, completed, declined, expired
+    status = Column(String, default="open", nullable=False)
     funding_amount = Column(Float)  # If funded
     created_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime)
