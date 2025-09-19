@@ -1,22 +1,28 @@
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from core.database import get_db
+from core.idempotency import capture_body, require_idempotency, store_idempotent
 from models import Document, MetricsSnapshot, Event, Deal, Merchant
 from services.storage import upload_private_bytes
 from services.antivirus import scan_bytes
+import json
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
 MAX_PDF = 12 * 1024 * 1024  # 12 MB per statement
 
-@router.post("/bank/upload")
+@router.post("/bank/upload", dependencies=[Depends(capture_body)])
 async def upload_bank_statements(
     request: Request,
     merchant_id: str = Query(...),
     deal_id: str = Query(...),
     files: list[UploadFile] = File(...),
     db: Session = Depends(get_db),
+    tenant_id=Depends(require_idempotency),
 ):
+    if getattr(request.state, "idem_cached", None):
+        return request.state.idem_cached
+    
     if len(files) != 3:
         raise HTTPException(400, detail="Exactly 3 PDF statements are required")
     stored = []
@@ -41,6 +47,9 @@ async def upload_bank_statements(
     metrics = {"avg_monthly_revenue": 80000, "avg_daily_balance_3m": 12000, "total_nsf_3m": 1, "total_days_negative_3m": 2}
     snap = MetricsSnapshot(deal_id=deal_id, source="statements", payload=metrics)
     db.add(snap)
-    db.add(Event(tenant_id=None, merchant_id=merchant_id, deal_id=deal_id, type="metrics.ready", data=metrics))
+    db.add(Event(tenant_id=tenant_id, merchant_id=merchant_id, deal_id=deal_id, type="metrics.ready", data_json=json.dumps(metrics)))
     db.commit()
-    return {"ok": True, "documents": stored, "metrics": metrics}
+    
+    resp = {"ok": True, "documents": stored, "metrics": metrics}
+    await store_idempotent(request, resp)
+    return resp

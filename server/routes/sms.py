@@ -10,7 +10,13 @@ from redis.asyncio import from_url as redis_from_url
 import re, json, uuid, asyncio, httpx, time
 
 S = get_settings()
-R = redis_from_url(S.REDIS_URL, encoding="utf-8", decode_responses=True)
+# Handle Redis URL fallback
+R = None
+if not S.REDIS_URL.startswith("memory://"):
+    try:
+        R = redis_from_url(S.REDIS_URL, encoding="utf-8", decode_responses=True)
+    except:
+        R = None
 
 router = APIRouter(prefix="/api/sms/cherry", tags=["sms"])
 
@@ -28,6 +34,10 @@ PHONE_RE = re.compile(r"^\+?[1-9]\d{7,14}$")
 
 async def rate_limit(tenant_id: str, count: int, limit: int = 2000, window_sec: int = 60):
     # simple token bucket per tenant
+    if not R:
+        # Skip rate limiting if Redis is not available
+        return
+    
     key = f"rt:sms:{tenant_id}"
     pipe = R.pipeline()
     now = int(time.time())
@@ -65,7 +75,7 @@ async def send_sms(
         if "stop to opt out" not in body.lower():
             body += FOOTER
         msgs.append({"to": m.to, "body": body})
-        db.add(Event(tenant_id=tenant_id, merchant_id=m.merchant_id, deal_id=None, type="sms.queued", data={"to": m.to, "campaign": payload.campaignName}))
+        db.add(Event(tenant_id=tenant_id, merchant_id=m.merchant_id, deal_id=None, type="sms.queued", data_json=json.dumps({"to": m.to, "campaign": payload.campaignName})))
         queued += 1
     db.commit()
 

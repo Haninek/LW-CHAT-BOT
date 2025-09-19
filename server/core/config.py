@@ -8,9 +8,10 @@ class Settings(BaseSettings):
     PORT: int = 8000
 
     DATABASE_URL: str = "sqlite:///./uwizard.db"
-    REDIS_URL: str = "redis://localhost:6379"  # use Upstash URL in prod
+    REDIS_URL: str = "memory://local"  # use real Redis URL in staging/prod
 
-    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+    # Dev: allow * ; Prod: set explicit origins
+    CORS_ORIGINS: str = "*"
 
     AWS_REGION: str = "us-east-1"
     AWS_ACCESS_KEY_ID: str = ""
@@ -31,8 +32,7 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins_list(self) -> List[str]:
-        # loosen for Replit preview if needed:
-        if self.DEBUG and "*" in self.CORS_ORIGINS:
+        if self.DEBUG and self.CORS_ORIGINS.strip() == "*":
             return ["*"]
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
 
