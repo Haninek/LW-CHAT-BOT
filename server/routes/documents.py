@@ -69,3 +69,45 @@ async def upload_bank_statements(
     resp = {"ok": True, "documents": stored, "metrics": metrics}
     await store_idempotent(request, resp)
     return resp
+
+
+@router.post("/bank/parse")
+async def parse_bank_statements_simple(
+    files: list[UploadFile] = File(...)
+):
+    """Simple endpoint to analyze bank statements without storing - for immediate analysis."""
+    
+    if len(files) < 3:
+        raise HTTPException(400, detail="Minimum 3 PDF bank statements required (3+ months)")
+    
+    if len(files) > 12:
+        raise HTTPException(400, detail="Maximum 12 PDF bank statements allowed (12 months max)")
+    
+    # Read and validate files
+    file_contents = []
+    file_names = []
+    
+    for f in files:
+        if f.content_type not in ("application/pdf", "application/x-pdf"):
+            raise HTTPException(400, detail=f"{f.filename}: only PDF files allowed")
+        
+        # Read content and check size
+        content = await f.read()
+        if len(content) > MAX_PDF:
+            raise HTTPException(400, detail=f"{f.filename}: file too large (max {MAX_PDF//1024//1024}MB)")
+        
+        file_contents.append(content)
+        file_names.append(f.filename)
+    
+    # Analyze bank statements with enhanced PDF parsing + GPT
+    analyzer = BankStatementAnalyzer()
+    metrics = analyzer.analyze_statements(file_contents, file_names)
+    
+    return {
+        "success": True,
+        "data": {
+            "metrics": metrics,
+            "files_processed": len(files),
+            "analysis_type": "real_pdf_parsing"
+        }
+    }

@@ -31,6 +31,7 @@ export default function OffersLab() {
     },
     minFiles: 3,
     maxFiles: 12,
+    multiple: true
   })
 
   const handleParseStatements = async () => {
@@ -185,91 +186,155 @@ export default function OffersLab() {
             animate={{ opacity: 1, x: 0 }}
             className="space-y-6"
           >
-            {/* File Upload */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200/50">
+            {/* File Upload - Modern & Responsive */}
+            <motion.div 
+              className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200/50"
+              animate={uploading ? { scale: [1, 1.02, 1] } : {}}
+              transition={{ duration: 2, repeat: uploading ? Infinity : 0 }}
+            >
               <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center">
                 <Upload className="w-5 h-5 mr-2 text-blue-600" />
                 Upload Bank Statements
+                {uploading && (
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                    className="ml-2 w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full"
+                  />
+                )}
               </h3>
 
-              <div
+              <motion.div
                 {...getRootProps()}
-                className={`border-2 border-dashed rounded-xl p-8 text-center transition-all duration-200 cursor-pointer
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className={`border-2 border-dashed rounded-xl p-8 text-center transition-all duration-300 cursor-pointer transform
                   ${isDragActive 
-                    ? 'border-blue-400 bg-blue-50' 
+                    ? 'border-blue-500 bg-gradient-to-r from-blue-50 to-indigo-50 scale-105 shadow-lg' 
                     : uploadedFiles.length > 0
-                    ? 'border-emerald-400 bg-emerald-50'
-                    : 'border-slate-300 bg-slate-50/50 hover:bg-slate-50 hover:border-slate-400'
+                    ? 'border-emerald-500 bg-gradient-to-r from-emerald-50 to-green-50 shadow-md'
+                    : 'border-slate-300 bg-gradient-to-r from-slate-50/50 to-gray-50/50 hover:bg-gradient-to-r hover:from-slate-50 hover:to-gray-50 hover:border-slate-400 hover:shadow-md'
                   }`}
               >
                 <input {...getInputProps()} />
-                <div className="space-y-4">
-                  <div className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center ${
-                    uploadedFiles.length > 0 ? 'bg-emerald-100' : 'bg-slate-100'
-                  }`}>
-                    {uploadedFiles.length > 0 ? (
-                      <CheckCircle className="w-8 h-8 text-emerald-600" />
+                <motion.div 
+                  className="space-y-4"
+                  animate={uploading ? { y: [0, -5, 0] } : {}}
+                  transition={{ duration: 2, repeat: uploading ? Infinity : 0 }}
+                >
+                  <motion.div 
+                    className={`w-20 h-20 mx-auto rounded-full flex items-center justify-center ${
+                      uploading ? 'bg-gradient-to-r from-blue-100 to-indigo-100' :
+                      uploadedFiles.length > 0 ? 'bg-gradient-to-r from-emerald-100 to-green-100' : 'bg-gradient-to-r from-slate-100 to-gray-100'
+                    }`}
+                    whileHover={{ rotate: 10 }}
+                    animate={uploading ? { scale: [1, 1.1, 1] } : {}}
+                    transition={{ duration: 1, repeat: uploading ? Infinity : 0 }}
+                  >
+                    {uploading ? (
+                      <Zap className="w-10 h-10 text-blue-600" />
+                    ) : uploadedFiles.length > 0 ? (
+                      <CheckCircle className="w-10 h-10 text-emerald-600" />
                     ) : (
-                      <FileText className="w-8 h-8 text-slate-400" />
+                      <FileText className="w-10 h-10 text-slate-500" />
                     )}
-                  </div>
+                  </motion.div>
                   
-                  {uploadedFiles.length > 0 ? (
+                  {uploading ? (
                     <div>
-                      <p className="text-lg font-medium text-emerald-700">
-                        {uploadedFiles.length} file{uploadedFiles.length > 1 ? 's' : ''} uploaded
+                      <motion.p 
+                        className="text-xl font-bold text-blue-700"
+                        animate={{ opacity: [0.5, 1, 0.5] }}
+                        transition={{ duration: 1.5, repeat: Infinity }}
+                      >
+                        🧠 AI Analyzing Your Statements...
+                      </motion.p>
+                      <p className="text-sm text-blue-600 mt-2">
+                        Extracting NSF counts, cash flow patterns, and generating insights
                       </p>
-                      <ul className="text-sm text-slate-600 mt-2 space-y-1">
+                      <div className="flex justify-center mt-4">
+                        <div className="flex space-x-1">
+                          {[0, 1, 2].map((i) => (
+                            <motion.div
+                              key={i}
+                              className="w-2 h-2 bg-blue-500 rounded-full"
+                              animate={{ y: [0, -8, 0] }}
+                              transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.2 }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ) : uploadedFiles.length > 0 ? (
+                    <div>
+                      <p className="text-xl font-bold text-emerald-700">
+                        ✅ {uploadedFiles.length} Statement{uploadedFiles.length > 1 ? 's' : ''} Ready
+                      </p>
+                      <div className="mt-3 max-h-24 overflow-y-auto">
                         {uploadedFiles.map((file, index) => (
-                          <li key={index} className="flex items-center justify-center">
-                            <FileText className="w-4 h-4 mr-2 text-slate-400" />
-                            {file.name}
-                          </li>
+                          <motion.div 
+                            key={index} 
+                            className="flex items-center justify-center text-sm text-slate-600 py-1"
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: index * 0.1 }}
+                          >
+                            <FileText className="w-4 h-4 mr-2 text-emerald-500" />
+                            <span className="truncate max-w-xs">{file.name}</span>
+                          </motion.div>
                         ))}
-                      </ul>
+                      </div>
+                      {currentMetrics && (
+                        <motion.div 
+                          className="mt-4 text-sm font-medium text-emerald-700"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                        >
+                          ✨ Analysis Complete - Ready for Offers!
+                        </motion.div>
+                      )}
                     </div>
                   ) : isDragActive ? (
                     <div>
-                      <p className="text-lg font-medium text-blue-700">Drop the files here</p>
-                      <p className="text-sm text-blue-600">Upload exactly 3 PDF statements</p>
+                      <motion.p 
+                        className="text-xl font-bold text-blue-700"
+                        animate={{ scale: [1, 1.05, 1] }}
+                        transition={{ duration: 0.5, repeat: Infinity }}
+                      >
+                        📁 Drop Your Bank Statements Here!
+                      </motion.p>
+                      <p className="text-sm text-blue-600">
+                        PDF files • 3-12 months • Instant AI analysis
+                      </p>
                     </div>
                   ) : (
                     <div>
-                      <p className="text-lg font-medium text-slate-700">
-                        Drag & drop bank statements here
+                      <p className="text-xl font-bold text-slate-700">
+                        🏦 Drop Bank Statements for Instant Analysis
                       </p>
-                      <p className="text-sm text-slate-500">
-                        or click to select files (PDF only, max 3 files)
+                      <p className="text-sm text-slate-500 mt-2">
+                        Drag & drop PDF statements or click to browse<br/>
+                        <span className="font-semibold text-blue-600">3-12 months • Real NSF & cash flow analysis</span>
                       </p>
+                      <div className="flex justify-center items-center mt-4 space-x-4 text-xs text-slate-400">
+                        <span className="flex items-center">
+                          <CheckCircle className="w-3 h-3 mr-1 text-green-500" />
+                          Secure
+                        </span>
+                        <span className="flex items-center">
+                          <CheckCircle className="w-3 h-3 mr-1 text-green-500" />
+                          AI-Powered
+                        </span>
+                        <span className="flex items-center">
+                          <CheckCircle className="w-3 h-3 mr-1 text-green-500" />
+                          Instant
+                        </span>
+                      </div>
                     </div>
                   )}
-                </div>
-              </div>
-
-              <motion.button
-                onClick={handleParseStatements}
-                disabled={uploadedFiles.length !== 3 || uploading}
-                whileHover={{ scale: uploadedFiles.length === 3 ? 1.02 : 1 }}
-                whileTap={{ scale: uploadedFiles.length === 3 ? 0.98 : 1 }}
-                className={`w-full mt-4 py-3 px-6 rounded-xl font-medium transition-all duration-200 flex items-center justify-center ${
-                  uploadedFiles.length === 3 && !uploading
-                    ? 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-lg shadow-blue-600/25'
-                    : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                }`}
-              >
-                {uploading ? (
-                  <>
-                    <div className="w-5 h-5 mr-2 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                    Analyzing Statements...
-                  </>
-                ) : (
-                  <>
-                    <Calculator className="w-5 h-5 mr-2" />
-                    Analyze Statements
-                  </>
-                )}
-              </motion.button>
-            </div>
+                </motion.div>
+              </motion.div>
+            </motion.div>
 
             {/* Metrics Display */}
             {currentMetrics && (
