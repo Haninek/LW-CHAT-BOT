@@ -51,7 +51,8 @@ async def send_for_signature(
     recipient_email: str,
     force: bool = False,
     tenant_id=Depends(require_idempotency),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_bearer)
 ) -> Dict[str, Any]:
     """Send document for digital signature with optional force override."""
     
@@ -138,7 +139,7 @@ async def signing_webhook(
     dropbox_signature: str = Header(None, alias="X-Dropbox-Signature"),
     docusign_signature: str = Header(None, alias="X-DocuSign-Signature"),
     db: Session = Depends(get_db)
-):
+) -> Dict[str, Any]:
     """Handle signing webhook from DocuSign/Dropbox Sign with signature verification."""
     
     # Verify webhook signature for security FIRST
