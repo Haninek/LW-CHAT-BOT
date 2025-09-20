@@ -1,15 +1,18 @@
 """Offer generation endpoints."""
 
-from fastapi import APIRouter, Depends, Request
+from __future__ import annotations
+from typing import Any, Dict, List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Request, Header, Query, Body
 from sqlalchemy.orm import Session
+from core.database import get_db
+from core.idempotency import capture_body, require_idempotency, store_idempotent
+from core.auth import require_bearer, require_partner
+
+# Existing specific imports
 from pydantic import BaseModel
-from typing import List, Dict, Any, Optional
 import uuid
 import json
 import math
-
-from core.database import get_db
-from core.idempotency import require_idempotency, capture_body, store_idempotent
 from models.offer import Offer
 from models.deal import Deal
 from models.metrics_snapshot import MetricsSnapshot
@@ -39,14 +42,14 @@ async def generate_offers(
     request: GenerateOffersRequest,
     tenant_id=Depends(require_idempotency),
     db: Session = Depends(get_db)
-):
+) -> Dict[str, Any]:
     """Generate funding offers for a deal based on latest metrics with underwriting guardrails."""
     
     if getattr(req.state, "idem_cached", None):
         return req.state.idem_cached
     
     # Verify deal exists
-    deal = db.query(Deal).filter(Deal.id == request.deal_id).first()
+    deal = db.get(Deal, request.deal_id)
     if not deal:
         return {"error": "Deal not found", "deal_id": request.deal_id}
     
@@ -261,14 +264,14 @@ async def accept_offer(
     deal_id: str,
     db: Session = Depends(get_db),
     tenant_id=Depends(require_idempotency)
-):
+) -> Dict[str, Any]:
     """Accept an offer for a deal with idempotency and event logging."""
     
     if getattr(req.state, "idem_cached", None):
         return req.state.idem_cached
     
     # Verify deal exists
-    deal = db.query(Deal).filter(Deal.id == deal_id).first()
+    deal = db.get(Deal, deal_id)
     if not deal:
         return {"error": "Deal not found", "deal_id": deal_id}
     
@@ -308,14 +311,14 @@ async def decline_offer(
     deal_id: str,
     db: Session = Depends(get_db),
     tenant_id=Depends(require_idempotency)
-):
+) -> Dict[str, Any]:
     """Decline an offer for a deal with idempotency and event logging."""
     
     if getattr(req.state, "idem_cached", None):
         return req.state.idem_cached
     
     # Verify deal exists
-    deal = db.query(Deal).filter(Deal.id == deal_id).first()
+    deal = db.get(Deal, deal_id)
     if not deal:
         return {"error": "Deal not found", "deal_id": deal_id}
     
