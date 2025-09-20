@@ -78,9 +78,9 @@ interface AppState {
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
-      // API Configuration - Use empty string for relative URLs to leverage Vite proxy
+      // API Configuration - Use direct backend connection for Replit
       apiConfig: {
-        baseUrl: '',  // Use relative URLs so Vite proxy handles the routing
+        baseUrl: 'http://172.31.89.226:8000',  // Direct connection to backend on internal network
         apiKey: (typeof window !== 'undefined' && (window as any).ENV?.VITE_API_KEY) || '',
         idempotencyEnabled: true
       },
