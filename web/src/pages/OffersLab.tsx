@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Upload, FileText, DollarSign, Calculator, Download, Zap, TrendingUp, AlertCircle, CheckCircle } from 'lucide-react'
 import { useDropzone } from 'react-dropzone'
@@ -6,12 +6,21 @@ import { useAppStore } from '../state/useAppStore'
 import { apiClient } from '../lib/api'
 
 export default function OffersLab() {
-  const { currentMetrics, setCurrentMetrics, offerOverrides } = useAppStore()
+  const { currentMetrics, setCurrentMetrics } = useAppStore()
   const [uploading, setUploading] = useState(false)
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
   const [generatedOffers, setGeneratedOffers] = useState<any[]>([])
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [merchantId, setMerchantId] = useState<string | null>(null)
+  const [dealId, setDealId] = useState<string | null>(null)
+  const [fallbackNotice, setFallbackNotice] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!fallbackNotice) return
+    const timeout = setTimeout(() => setFallbackNotice(null), 4000)
+    return () => clearTimeout(timeout)
+  }, [fallbackNotice])
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length < 3) {
@@ -37,6 +46,42 @@ export default function OffersLab() {
     multiple: true
   })
 
+  const ensureMerchantAndDeal = useCallback(async () => {
+    let activeMerchantId = merchantId
+    let activeDealId = dealId
+
+    if (!activeMerchantId) {
+      const merchantName = `Offers Lab Merchant ${new Date().toISOString().slice(0, 10)}`
+      const merchantResponse = await apiClient.createMerchant({
+        legal_name: merchantName,
+      })
+
+      if (!merchantResponse?.merchant?.id) {
+        throw new Error('Unable to create merchant record')
+      }
+
+      activeMerchantId = merchantResponse.merchant.id
+      setMerchantId(activeMerchantId)
+    }
+
+    if (!activeDealId && activeMerchantId) {
+      const dealResponse = await apiClient.startDeal({ merchantId: activeMerchantId })
+
+      if (!dealResponse?.deal_id) {
+        throw new Error('Unable to start or reuse deal')
+      }
+
+      activeDealId = dealResponse.deal_id
+      setDealId(activeDealId)
+    }
+
+    if (!activeMerchantId || !activeDealId) {
+      throw new Error('Missing merchant or deal identifiers')
+    }
+
+    return { merchantId: activeMerchantId, dealId: activeDealId }
+  }, [merchantId, dealId])
+
   const handleParseStatements = async (filesToAnalyze?: File[]) => {
     const files = filesToAnalyze || uploadedFiles
     if (files.length < 3) {
@@ -46,37 +91,37 @@ export default function OffersLab() {
 
     setUploading(true)
     setError(null)
-    
-    // For now, we'll use demo IDs. In a real app, these would come from deal creation
-    const merchantId = "demo-merchant-123"
-    const dealId = "demo-deal-456"
-    
+    setFallbackNotice(null)
+
     try {
       console.log('Analyzing files:', files.map(f => f.name))
-      
+
+      const { merchantId: activeMerchantId, dealId: activeDealId } = await ensureMerchantAndDeal()
+
       // 1) Upload the 3 PDFs
-      const uploadResult = await apiClient.uploadBankStatements({ 
-        merchantId, 
-        dealId, 
-        files 
+      const uploadResult = await apiClient.uploadBankStatements({
+        merchantId: activeMerchantId,
+        dealId: activeDealId,
+        files
       })
       if (uploadResult?.metrics) setCurrentMetrics(uploadResult.metrics)
 
       // 2) Parse (alias) – returns latest MetricsSnapshot
-      const parseResult = await apiClient.parseStatements({ 
-        merchantId, 
-        dealId 
+      const parseResult = await apiClient.parseStatements({
+        merchantId: activeMerchantId,
+        dealId: activeDealId
       })
       if (parseResult?.metrics) setCurrentMetrics(parseResult.metrics)
 
       // 3) Auto-generate offers after successful parse
       if (parseResult?.metrics) {
-        await handleGenerateOffers()
+        await handleGenerateOffers(parseResult.metrics)
       }
     } catch (error: any) {
       console.error('Failed to parse statements:', error)
       setError(error?.message || 'Parse failed')
-      
+      setFallbackNotice('Using demo metrics while statement parsing is unavailable.')
+
       // Show demo metrics for UI purposes based on uploaded files count
       const files = filesToAnalyze || uploadedFiles
       const monthsCount = files.length
@@ -89,7 +134,7 @@ export default function OffersLab() {
         days_negative: Math.floor(Math.random() * 3)
       }))
       
-      setCurrentMetrics({
+      const fallbackMetrics = {
         months: demoMonths,
         avg_monthly_revenue: 133333,
         avg_daily_balance: 46667,
@@ -98,18 +143,24 @@ export default function OffersLab() {
         months_analyzed: monthsCount,
         statements_processed: monthsCount,
         gpt_analysis: false
-      })
+      }
+      setCurrentMetrics(fallbackMetrics)
+
+      await handleGenerateOffers(fallbackMetrics)
     } finally {
       setUploading(false)
     }
   }
 
-  const handleGenerateOffers = async () => {
-    if (!currentMetrics) return
+  const handleGenerateOffers = async (metricsInput?: any) => {
+    const storeState = useAppStore.getState()
+    const metricsPayload = metricsInput ?? storeState.currentMetrics
+
+    if (!metricsPayload) return
 
     setGenerating(true)
     try {
-      const response = await apiClient.generateOffers(currentMetrics, offerOverrides)
+      const response = await apiClient.generateOffers(metricsPayload, storeState.offerOverrides)
       if (response.success && response.data?.offers) {
         setGeneratedOffers(response.data.offers)
       }
@@ -191,6 +242,17 @@ export default function OffersLab() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/30">
+      {fallbackNotice && (
+        <div className="fixed top-4 right-4 z-50">
+          <div className="bg-slate-900 text-white px-4 py-3 rounded-xl shadow-lg flex items-center space-x-3">
+            <AlertCircle className="w-5 h-5 text-amber-300" />
+            <div>
+              <p className="text-sm font-semibold">Showing fallback metrics</p>
+              <p className="text-xs text-slate-200">{fallbackNotice}</p>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="bg-white/80 backdrop-blur-sm border-b border-slate-200/50 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

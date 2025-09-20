@@ -7,27 +7,31 @@ class ApiClient {
   }
 
   private async request<T>(
-    endpoint: string, 
+    endpoint: string,
     options: RequestInit = {}
   ): Promise<{ success: boolean; data?: T; error?: string; timestamp: string }> {
     const config = this.getConfig()
-    const url = `${config.baseUrl}${endpoint}`
-    
+    const url = endpoint.startsWith('http') ? endpoint : `${config.baseUrl}${endpoint}`
+
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...(options.headers as Record<string, string> || {}),
     }
-    
+
+    if (!('X-Tenant-ID' in headers)) {
+      headers['X-Tenant-ID'] = config.tenantId || 'demo'
+    }
+
     // Add API key if available
     if (config.apiKey) {
       headers['Authorization'] = `Bearer ${config.apiKey}`
     }
-    
+
     // Add idempotency key for POST requests if enabled
-    if (config.idempotencyEnabled && options.method === 'POST') {
+    if (config.idempotencyEnabled && options.method === 'POST' && !('Idempotency-Key' in headers)) {
       headers['Idempotency-Key'] = uuidv4()
     }
-    
+
     try {
       const response = await fetch(url, {
         ...options,
@@ -69,15 +73,19 @@ class ApiClient {
 
     const config = this.getConfig()
     const url = `${config.baseUrl}/api/documents/bank/upload?merchant_id=${encodeURIComponent(merchantId)}&deal_id=${encodeURIComponent(dealId)}`
-    
-    const headers: Record<string, string> = {}
-    
+
+    const headers: Record<string, string> = {
+      'X-Tenant-ID': config.tenantId || 'demo',
+    }
+
     if (config.apiKey) {
       headers['Authorization'] = `Bearer ${config.apiKey}`
     }
-    
-    if (idem || config.idempotencyEnabled) {
-      headers['Idempotency-Key'] = idem ?? uuidv4()
+
+    if (idem) {
+      headers['Idempotency-Key'] = idem
+    } else if (config.idempotencyEnabled) {
+      headers['Idempotency-Key'] = uuidv4()
     }
 
     const response = await fetch(url, {
@@ -91,16 +99,56 @@ class ApiClient {
 
   async parseStatements(params: { merchantId: string; dealId: string; idem?: string }) {
     const { merchantId, dealId, idem } = params
-    const config = this.getConfig()
-    const url = `${config.baseUrl}/api/statements/parse?merchant_id=${encodeURIComponent(merchantId)}&deal_id=${encodeURIComponent(dealId)}`
-    
-    return this.request(url, {
+    const endpoint = `/api/statements/parse?merchant_id=${encodeURIComponent(merchantId)}&deal_id=${encodeURIComponent(dealId)}`
+    const headers: Record<string, string> = {}
+    if (idem) {
+      headers['Idempotency-Key'] = idem
+    }
+
+    return this.request(endpoint, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Idempotency-Key': idem ?? uuidv4()
-      },
+      headers,
       body: JSON.stringify({})
+    })
+  }
+
+  // Merchant & deal flow
+  async createMerchant(payload: {
+    legal_name?: string
+    dba?: string
+    phone?: string
+    email?: string
+    ein?: string
+    address?: string
+    city?: string
+    state?: string
+    zip?: string
+  }) {
+    return this.request('/api/merchants/create', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async startDeal(params: { merchantId: string; fundingAmount?: number; idem?: string }) {
+    const { merchantId, fundingAmount, idem } = params
+    const headers: Record<string, string> = {}
+    if (idem) {
+      headers['Idempotency-Key'] = idem
+    }
+
+    const body: Record<string, unknown> = {
+      merchant_id: merchantId,
+    }
+
+    if (typeof fundingAmount === 'number') {
+      body.funding_amount = fundingAmount
+    }
+
+    return this.request('/api/deals/start', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
     })
   }
 

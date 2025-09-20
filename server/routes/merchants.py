@@ -1,12 +1,14 @@
 """Merchant management endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from pydantic import BaseModel
 import uuid
 
+from core.auth import require_bearer
 from core.database import get_db
+from core.idempotency import capture_body, require_idempotency, store_idempotent
 from models.merchant import Merchant, FieldState
 from models.deal import Deal
 
@@ -19,6 +21,74 @@ class MerchantResponse(BaseModel):
     status: str
     phone: Optional[str] = None
     email: Optional[str] = None
+
+
+class CreateMerchantRequest(BaseModel):
+    legal_name: Optional[str] = None
+    dba: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    ein: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip: Optional[str] = None
+
+
+@router.post("/create", dependencies=[Depends(capture_body)])
+async def create_merchant(
+    request: Request,
+    payload: CreateMerchantRequest,
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_bearer),
+    _tenant_id=Depends(require_idempotency),
+):
+    """Create a merchant (or reuse an existing record) for deal flows."""
+
+    if getattr(request.state, "idem_cached", None):
+        return request.state.idem_cached
+
+    existing = None
+    if payload.ein:
+        existing = db.query(Merchant).filter(Merchant.ein == payload.ein).first()
+    if not existing and payload.email:
+        existing = db.query(Merchant).filter(Merchant.email == payload.email).first()
+    if not existing and payload.phone:
+        existing = db.query(Merchant).filter(Merchant.phone == payload.phone).first()
+
+    created = False
+    if existing:
+        merchant = existing
+    else:
+        merchant = Merchant(
+            id=str(uuid.uuid4()),
+            legal_name=(payload.legal_name or "Offers Lab Merchant").strip() or "Offers Lab Merchant",
+            dba=payload.dba,
+            phone=payload.phone,
+            email=payload.email,
+            ein=payload.ein,
+            address=payload.address,
+            city=payload.city,
+            state=payload.state,
+            zip=payload.zip,
+            status="new",
+        )
+        db.add(merchant)
+        db.commit()
+        db.refresh(merchant)
+        created = True
+
+    merchant_response = MerchantResponse(
+        id=merchant.id,
+        legal_name=merchant.legal_name,
+        status=merchant.status,
+        phone=merchant.phone,
+        email=merchant.email,
+    ).dict()
+
+    resp = {"ok": True, "created": created, "merchant": merchant_response}
+    await store_idempotent(request, resp)
+    return resp
 
 
 @router.get("/")
