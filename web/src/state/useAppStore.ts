@@ -3,6 +3,13 @@ import { persist } from 'zustand/middleware'
 import { Rule, Persona, Merchant, FieldId, RuleEngineResult, Template } from '../types'
 // Simplified state management without external dependencies
 
+const runtimeEnv = (typeof window !== 'undefined' ? ((window as any).ENV ?? {}) : {}) as Record<string, string>
+const buildEnv = ((import.meta as any)?.env ?? {}) as Record<string, string>
+
+const defaultApiBase = runtimeEnv.VITE_API_BASE ?? buildEnv.VITE_API_BASE ?? ''
+const defaultApiKey = runtimeEnv.VITE_API_KEY ?? buildEnv.VITE_API_KEY ?? ''
+const defaultTenantId = runtimeEnv.VITE_TENANT_ID ?? buildEnv.VITE_TENANT_ID ?? 'demo'
+
 export type ChatMessage = {
   id: string
   type: 'user' | 'bot'
@@ -15,6 +22,7 @@ export type ApiConfig = {
   baseUrl: string
   apiKey?: string
   idempotencyEnabled: boolean
+  tenantId?: string
 }
 
 export type IntakeStep = {
@@ -80,8 +88,9 @@ export const useAppStore = create<AppState>()(
     (set, get) => ({
       // API Configuration - Use direct backend connection for Replit
       apiConfig: {
-        baseUrl: 'http://172.31.89.226:8000',  // Direct connection to backend on internal network
-        apiKey: (typeof window !== 'undefined' && (window as any).ENV?.VITE_API_KEY) || '',
+        baseUrl: defaultApiBase,
+        apiKey: defaultApiKey,
+        tenantId: defaultTenantId,
         idempotencyEnabled: true
       },
       setApiConfig: (config) => set((state) => ({
