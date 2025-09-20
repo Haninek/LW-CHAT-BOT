@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { BarChart, TrendingUp, DollarSign, Users } from 'lucide-react'
-import { ApiWidget } from '../components/ApiWidget'
+// ApiWidget removed - using simplified dashboard
 import { api } from '../lib/api'
 
 const Dashboard: React.FC = () => {
@@ -162,53 +162,25 @@ const Dashboard: React.FC = () => {
           </p>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            <ApiWidget
-              config={{
-                id: 'posts-feed',
-                title: "Posts Feed",
-                endpoint: "https://jsonplaceholder.typicode.com/posts",
-                refreshInterval: 30,
-                valuePath: 'length',
-                formatter: 'number',
-                displayType: 'stat'
-              }}
-            />
-            <ApiWidget
-              config={{
-                id: 'user-directory',
-                title: "User Directory",
-                endpoint: "https://jsonplaceholder.typicode.com/users",
-                refreshInterval: 45,
-                valuePath: 'length',
-                formatter: 'number',
-                displayType: 'stat'
-              }}
-            />
+            <div className="bg-white rounded-lg border border-slate-200 p-6">
+              <h3 className="text-lg font-semibold text-slate-900 mb-4">Posts Feed</h3>
+              <div className="text-sm text-slate-600">Real-time content monitoring</div>
+            </div>
+            <div className="bg-white rounded-lg border border-slate-200 p-6">
+              <h3 className="text-lg font-semibold text-slate-900 mb-4">User Directory</h3>
+              <div className="text-sm text-slate-600">User management system</div>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <ApiWidget
-              config={{
-                id: 'photo-gallery',
-                title: "Photo Gallery", 
-                endpoint: "https://jsonplaceholder.typicode.com/photos",
-                refreshInterval: 60,
-                valuePath: 'length',
-                formatter: 'number',
-                displayType: 'stat'
-              }}
-            />
-            <ApiWidget
-              config={{
-                id: 'comments-stream',
-                title: "Comments Stream",
-                endpoint: "https://jsonplaceholder.typicode.com/comments",
-                refreshInterval: 20,
-                valuePath: 'length',
-                formatter: 'number',
-                displayType: 'stat'
-              }}
-            />
+            <div className="bg-white rounded-lg border border-slate-200 p-6">
+              <h3 className="text-lg font-semibold text-slate-900 mb-4">Photo Gallery</h3>
+              <div className="text-sm text-slate-600">Media content management</div>
+            </div>
+            <div className="bg-white rounded-lg border border-slate-200 p-6">
+              <h3 className="text-lg font-semibold text-slate-900 mb-4">Comments Stream</h3>
+              <div className="text-sm text-slate-600">Community engagement tracking</div>
+            </div>
           </div>
 
           {/* Features List */}

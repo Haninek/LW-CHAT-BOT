@@ -11,6 +11,7 @@ export default function OffersLab() {
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
   const [generatedOffers, setGeneratedOffers] = useState<any[]>([])
   const [generating, setGenerating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length < 3) {

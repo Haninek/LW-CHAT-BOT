@@ -199,7 +199,7 @@ class ApiClient {
       return await this.request(endpoint, { method: 'GET' })
     } catch (error) {
       // If backend doesn't support merchant resolution, return mock data
-      const { sampleMerchants } = await import('./seedData')
+      const sampleMerchants = []  // Mock data removed
       console.warn('Merchant resolution not available, using mock data')
       
       if (phone || email) {

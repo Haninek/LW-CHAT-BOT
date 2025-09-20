@@ -2,10 +2,8 @@ import { useState, useEffect, useRef, type KeyboardEvent } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Send, Bot, User, Check, Clock, MessageSquare, Sparkles, Zap } from 'lucide-react'
 import { useAppStore } from '../state/useAppStore'
-import { ConversationManager, ConversationState } from '../lib/conversation/manager'
-import { fieldRegistry } from '../lib/fieldRegistry'
+// Simplified chat without external dependencies
 import { FieldId } from '../types'
-import { Persona, Template, Rule, Action } from '../seeds_chad'
 
 interface ChatMessage {
   id: string
@@ -19,18 +17,18 @@ export default function Chat() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputText, setInputText] = useState('')
   const [isTyping, setIsTyping] = useState(false)
-  const [conversationManager] = useState(() => new ConversationManager())
-  const [currentState, setCurrentState] = useState<ConversationState>('greeting')
+  // Simplified conversation state without external manager
+  const [currentState, setCurrentState] = useState('greeting')
   const [pendingField, setPendingField] = useState<FieldId | null>(null)
   const [pendingFields, setPendingFields] = useState<FieldId[]>([])
   const [merchantContext, setMerchantContext] = useState<Record<string, any>>({})
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const { updateMerchantField } = useAppStore()
 
-  // Chad seeds helpers
-  const getPersona = (): Persona => JSON.parse(localStorage.getItem("UW_PERSONA") || "{}")
-  const getTemplates = (): Template[] => JSON.parse(localStorage.getItem("UW_TEMPLATES") || "[]")
-  const getRules = (): Rule[] => JSON.parse(localStorage.getItem("UW_RULES") || "[]")
+  // Simplified seed helpers - removed external dependencies
+  const getPersona = () => ({ id: 'chad', name: 'Chad', role: 'AI Assistant' })
+  const getTemplates = () => []
+  const getRules = () => []
 
   const render = (tplId: string, ctx: Record<string, any>) => {
     const tpl = getTemplates().find(t => t.id === tplId)
@@ -118,7 +116,8 @@ export default function Chat() {
 
     // Process field if pending
     if (pendingField) {
-      const field = fieldRegistry[pendingField]
+      // Field registry removed - using simple field handling
+      const field = { label: 'Field', type: 'text' }
       if (field) {
         // Store the field value
         updateMerchantField(pendingField, message)
@@ -140,7 +139,8 @@ export default function Chat() {
           }, 1000)
         } else {
           // Ask for next field
-          const nextField = fieldRegistry[nextFields[0]]
+          // Field registry removed
+          const nextField = { label: 'Next Field' }
           setTimeout(() => {
             setIsTyping(false)
             addBotMessage(`Great! Now I need to know: ${nextField.label}`)

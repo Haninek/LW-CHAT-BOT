@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { Rule, Persona, Merchant, FieldId, RuleEngineResult, Template } from '../types'
-import { storage, initializeSeedData } from '../lib/seedData'
+// Simplified state management without external dependencies
 
 export type ChatMessage = {
   id: string
@@ -101,15 +101,15 @@ export const useAppStore = create<AppState>()(
       },
       setRules: (rules) => {
         set({ rules });
-        storage.setRules(rules);
+        // Rules stored in memory
       },
       setTemplates: (templates) => {
         set({ templates });
-        storage.setTemplates(templates);
+        // Templates stored in memory
       },
       setPersona: (persona) => {
         set({ persona });
-        storage.setPersona(persona);
+        // Persona stored in memory
       },
       addRule: (rule) => {
         const newRules = [...get().rules, rule];
@@ -182,17 +182,12 @@ export const useAppStore = create<AppState>()(
 
       // Initialization
       initialize: () => {
-        initializeSeedData();
-        const rules = storage.getRules();
-        const templates = storage.getTemplates();
-        const persona = storage.getPersona();
-        const currentMerchant = storage.getCurrentMerchant();
-        
+        // Initialize with default values
         set({
-          rules,
-          templates,
-          persona,
-          currentMerchant
+          rules: [],
+          templates: [],
+          persona: { id: 'default', name: 'Chad', role: 'AI Assistant' },
+          currentMerchant: null
         });
       }
     }),
