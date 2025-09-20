@@ -22,6 +22,8 @@ export default function OffersLab() {
       return
     }
     setUploadedFiles(acceptedFiles)
+    // Automatically start analysis when files are dropped
+    handleParseStatements(acceptedFiles)
   }, [])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -34,22 +36,26 @@ export default function OffersLab() {
     multiple: true
   })
 
-  const handleParseStatements = async () => {
-    if (uploadedFiles.length < 3) {
+  const handleParseStatements = async (filesToAnalyze?: File[]) => {
+    const files = filesToAnalyze || uploadedFiles
+    if (files.length < 3) {
       alert('Please upload minimum 3 bank statements (3+ months required)')
       return
     }
 
     setUploading(true)
     try {
-      const response = await apiClient.parseStatements(uploadedFiles)
+      console.log('Analyzing files:', files.map(f => f.name))
+      const response = await apiClient.parseStatements(files)
       if (response.success && response.data) {
         setCurrentMetrics(response.data.metrics)
       }
     } catch (error) {
       console.error('Failed to parse statements:', error)
+      alert(`Analysis failed: ${error.message || 'Unknown error'}`)
       // Show demo metrics for UI purposes based on uploaded files count
-      const monthsCount = uploadedFiles.length
+      const files = filesToAnalyze || uploadedFiles
+      const monthsCount = files.length
       const demoMonths = Array.from({ length: monthsCount }, (_, i) => ({
         statement_month: new Date(2024, i, 1).toISOString().slice(0, 7),
         total_deposits: 125000 + (i * 5000),

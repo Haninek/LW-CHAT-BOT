@@ -38,19 +38,21 @@ async def parse_bank_statements(
             )
     
     if settings.MOCK_MODE:
-        # Return deterministic mock data
+        # Return deterministic mock data in frontend-expected format
         return {
-            "status": "success",
-            "files_processed": len(files),
-            "metrics": {
-                "avg_monthly_revenue": 85000,
-                "avg_daily_balance_3m": 15000,
-                "total_nsf_3m": 2,
-                "total_days_negative_3m": 3,
-                "analysis_confidence": 0.95,
-                "months_analyzed": len(files)
-            },
-            "mock_mode": True
+            "success": True,
+            "data": {
+                "metrics": {
+                    "avg_monthly_revenue": 85000,
+                    "avg_daily_balance_3m": 15000,
+                    "total_nsf_3m": 2,
+                    "total_days_negative_3m": 3,
+                    "analysis_confidence": 0.95,
+                    "months_analyzed": len(files)
+                },
+                "files_processed": len(files),
+                "analysis_type": "mock_data"
+            }
         }
     
     else:
@@ -66,9 +68,10 @@ async def parse_bank_statements(
         }
         
         return {
-            "status": "success",
-            "files_processed": len(files),
-            "metrics": metrics,
-            "mock_mode": False,
-            "note": "PDF parsing not fully implemented - using sample data"
+            "success": True,
+            "data": {
+                "metrics": metrics,
+                "files_processed": len(files),
+                "analysis_type": "sample_data"
+            }
         }
