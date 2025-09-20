@@ -1,19 +1,19 @@
 """Background check endpoints with CLEAR, NYSCEF, and ownership verification."""
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from __future__ import annotations
+from typing import Any, Dict, List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Request, Header, Query, Body
 from sqlalchemy.orm import Session
+from core.database import get_db
+from core.idempotency import capture_body, require_idempotency, store_idempotent
+from core.auth import require_bearer, require_partner
+
+# Existing specific imports
 from pydantic import BaseModel
-from typing import Optional, List
 import uuid
 import json
 import asyncio
-
-from core.database import get_db
 from core.config import get_settings
-from core.idempotency import capture_body, require_idempotency, store_idempotent
-
-settings = get_settings()
-from core.auth import require_bearer, require_partner
 from models.background_job import BackgroundJob
 from services.background_checks import (
     background_check_orchestrator,
@@ -21,6 +21,8 @@ from services.background_checks import (
     BusinessIdentity,
     CheckType
 )
+
+settings = get_settings()
 
 router = APIRouter(tags=["background"])
 
@@ -55,7 +57,7 @@ async def start_comprehensive_background_check(
     db: Session = Depends(get_db),
     tenant_id=Depends(require_idempotency),
     _: bool = Depends(require_bearer), __: bool = Depends(require_partner)
-):
+) -> Dict[str, Any]:
     """Start comprehensive background check with CLEAR, NYSCEF, and ownership verification."""
     
     if getattr(req.state, "idem_cached", None):

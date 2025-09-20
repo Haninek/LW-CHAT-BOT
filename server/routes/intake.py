@@ -1,14 +1,17 @@
 """Intake session endpoints."""
 
-from fastapi import APIRouter, Depends, Request
+from __future__ import annotations
+from typing import Any, Dict, List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Request, Header, Query, Body
 from sqlalchemy.orm import Session
+from core.database import get_db
+from core.idempotency import capture_body, require_idempotency, store_idempotent
+from core.auth import require_bearer, require_partner
+
+# Existing specific imports
 from pydantic import BaseModel
 from datetime import datetime, timedelta
 import uuid
-
-from core.database import get_db
-from core.auth import require_bearer
-from core.idempotency import capture_body, require_idempotency, store_idempotent
 from models.intake import Intake
 from models.merchant import FieldState
 
@@ -33,7 +36,7 @@ async def start_intake(
     db: Session = Depends(get_db),
     tenant_id=Depends(require_idempotency),
     _: bool = Depends(require_bearer)
-):
+) -> Dict[str, Any]:
     """Start new intake session."""
     
     if getattr(req.state, "idem_cached", None):
@@ -61,7 +64,7 @@ async def answer_field(
     db: Session = Depends(get_db),
     tenant_id=Depends(require_idempotency),
     _: bool = Depends(require_bearer)
-):
+) -> Dict[str, Any]:
     """Answer a field during intake and compute missing/confirm fields."""
     
     if getattr(req.state, "idem_cached", None):

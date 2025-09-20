@@ -1,16 +1,20 @@
 """Contract signing endpoints."""
 
-import hmac, hashlib, json
-from fastapi import APIRouter, Depends, HTTPException, Request, Header
+from __future__ import annotations
+from typing import Any, Dict, List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Request, Header, Query, Body
 from sqlalchemy.orm import Session
+from core.database import get_db
+from core.idempotency import capture_body, require_idempotency, store_idempotent
+from core.auth import require_bearer, require_partner
+
+# Existing specific imports
+import hmac, hashlib, json
 from sqlalchemy import text
 from pydantic import BaseModel
-from typing import Optional
 import uuid
-
-from core.database import get_db
 from core.config import get_settings
-from core.idempotency import capture_body, require_idempotency, store_idempotent, R, _memory_store
+from core.idempotency import R, _memory_store
 from models.agreement import Agreement
 from models.event import Event
 from models.deal import Deal
@@ -48,7 +52,7 @@ async def send_for_signature(
     force: bool = False,
     tenant_id=Depends(require_idempotency),
     db: Session = Depends(get_db)
-):
+) -> Dict[str, Any]:
     """Send document for digital signature with optional force override."""
     
     if getattr(request.state, "idem_cached", None):
