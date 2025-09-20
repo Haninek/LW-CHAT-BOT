@@ -1,0 +1,625 @@
+Automated Flags & Workflow Builder — Spec v1 (UW Wizard)
+
+> Scope: deliver the red items from the Minimal Acceptance Checklist with emphasis on user‑defined automated flags and a no‑code chatbot/workflow builder that drives “ask‑only‑what’s‑missing” intake.
+
+
+
+
+---
+
+1) Objectives
+
+Let underwriters/admins define their own flags & guardrails (e.g., courts, ownership, CA 4‑month, true revenue, NSF caps, positions).
+
+“Ask only what’s missing” across merchant/company/deal data and statement metrics.
+
+Persist entities and snapshots to support offers, compliance, and auditing.
+
+Be multi‑tenant with secure connector storage.
+
+Operate at scale with queues and idempotent jobs.
+
+
+2) Non‑Goals (v1)
+
+No LLM‑only decisions. LLM assists UX (copy/ask phrasing) but rules decide flags.
+
+No exotic ML dedupe; use pragmatic probabilistic matching now; swapable later.
+
+
+
+---
+
+3) System Overview
+
+Core services
+
+1. API (FastAPI / Node) — CRUD, rule evaluate, workflow execute.
+
+
+2. Rule Engine — JSONLogic/CEL interpreter + action dispatch.
+
+
+3. Workflow Orchestrator — graph executor for chatbot & back‑office flows.
+
+
+4. Queues — BullMQ (Node) or RQ/Celery (Py) for async jobs.
+
+
+5. Connectors — Pipedrive, e‑sign, SMS, bank/PDF parsing, data vendors.
+
+
+6. Storage — Postgres (OLTP), Redis (cache/locks), S3‑compatible blob (docs).
+
+
+
+Data flow Upload → PDF metrics → entity resolution → persist merchant/company/deal → evaluate guardrails/flags → “ask‑only‑what’s‑missing” → collect → re‑evaluate → offers → e‑sign → campaigns.
+
+
+---
+
+4) Data Model (Postgres)
+
+4.1 Tenancy & Access
+
+tenants(id, name, plan, created_at)
+
+users(id, tenant_id, email, role, status)
+
+api_keys(id, tenant_id, key_hash, scope, created_at, last_used_at)
+
+connectors(id, tenant_id, kind, display_name, config_json, created_at) — config_json holds OAuth tokens/credentials (KMS‑encrypted at rest).
+
+
+4.2 Entities & Deals
+
+companies(id, tenant_id, legal_name, dba, tax_id_ein, state, formed_on, phone, website, address_json, created_at, updated_at, dedupe_hash)
+
+owners(id, tenant_id, company_id, first_name, last_name, dob, ssn_last4, email, phone, address_json, ownership_pct, created_at)
+
+merchants(id, tenant_id, company_id, external_refs_json) — optional façade layer if “merchant” ≠ “company”.
+
+deals(id, tenant_id, company_id, status, requested_amount, product_type, stage, created_at, updated_at, assigned_to)
+
+positions(id, tenant_id, company_id, lender, opened_on, balance, payment_freq, payment_amt, ucc_present_bool, details_json)
+
+
+4.3 Documents, Statements & Metrics
+
+documents(id, tenant_id, company_id, deal_id, kind, storage_uri, sha256, uploaded_by, uploaded_at, source)
+
+bank_statements(id, tenant_id, company_id, deal_id, month, year, doc_id, parsed_json, metrics_json, vendor)
+
+metrics_snapshots(id, tenant_id, company_id, deal_id, as_of_date, metrics_json, computed_by, version)
+
+
+4.4 Rules, Guardrails & Flags
+
+guardrails(id, tenant_id, name, description, rule_json, severity, enabled, version, created_by, created_at)
+
+flag_rules(id, tenant_id, name, category, description, rule_json, actions_json, severity, enabled, version, created_by, created_at)
+
+flags(id, tenant_id, deal_id, rule_id, code, severity, payload_json, created_at, resolved_at, resolved_by, resolution_notes)
+
+
+4.5 Workflows & Campaigns
+
+workflows(id, tenant_id, name, kind, graph_json, version, status, created_at, published_at)
+
+workflow_runs(id, tenant_id, workflow_id, deal_id, state_json, status, started_at, finished_at)
+
+triggers(id, tenant_id, name, event, filter_json, workflow_id, enabled)
+
+campaigns(id, tenant_id, name, channel, audience_query, template_id, status)
+
+
+Indexes: tax_id_ein, dedupe_hash, company_id+deal_id, created_at, tenant_id on every table.
+
+
+---
+
+5) Entity Resolution (existing vs new)
+
+Signals: tax_id_ein exact, banking account_fingerprint, legal_name fuzzy (Jaro‑Winkler ≥ 0.92), phone/email exact, address (street+zip) exact.
+
+Algorithm (v1):
+
+1. If EIN exact match within tenant → same company.
+
+
+2. Else if account_fingerprint match → same company.
+
+
+3. Else compute name similarity; if ≥0.92 and address or phone/email match → same.
+
+
+4. Else new company.
+
+
+
+Persist dedupe_hash = stable hash of (normalized legal_name, ein, normalized address, last4 bank acct).
+
+API: POST /entity-resolve → {candidate_company, decision: 'existing'|'new', match_score, matched_company_id?}
+
+
+---
+
+6) “Ask‑Only‑What’s‑Missing” Intake
+
+Inputs:
+
+Product template (required fields & documents per product/deal stage)
+
+Current persisted company/owner/deal fields
+
+Latest metrics_snapshots
+
+Active guardrails/flag rules
+
+
+Planner:
+
+1. Build needs list = (Required ∪ Guardrail prerequisites ∪ Flag preconditions) − Already‑Known.
+
+
+2. Sort by criticality (blocks offer > changes tier > optional) and effort (structured field < doc upload < third‑party consent).
+
+
+3. Feed to Workflow Builder as nodes:
+
+AskField (input)
+
+RequestDoc (upload)
+
+Consent (checkbox)
+
+ConnectorAction (pull from Pipedrive, bank, data vendor)
+
+
+
+
+Chat UX:
+
+LLM rewrites prompts, but validation is server‑side.
+
+Re‑evaluate rules after each new datum; stop asking once thresholds satisfied.
+
+
+
+---
+
+7) Guardrails (examples)
+
+CA 4 months: state == 'CA' AND months_in_business >= 4 (block if false)
+
+True Revenue: (sum(deposits_last_3m) / 3) within ±X% of stated_monthly_rev else flag
+
+NSF/Negative Days Caps: nsf_count_90d <= N and negative_days_90d <= M
+
+Positions: active_positions_count <= K and total_daily_payments <= cap
+
+
+Represent these as guardrails (blocking/tiers) vs flags (FYI/underwriter review).
+
+
+---
+
+8) Automated Flags — User‑Defined Rules
+
+8.1 Rule Representation (JSONLogic‑style)
+
+{
+  "name": "Court Records Present",
+  "category": "CLEAR/courts/ownership",
+  "description": "Flag if any court records or liens are found in the last 24 months",
+  "severity": "high",
+  "rule": {
+    ">": [ {"var": "vendor.clear.courts.count_24m"}, 0 ]
+  },
+  "actions": [
+    {"type": "create_flag", "code": "COURT_RECORDS", "message": "Court records found: {{vendor.clear.courts.count_24m}}"},
+    {"type": "require_doc", "doc_kind": "Legal Explanation Letter"},
+    {"type": "route", "queue": "manual_review"}
+  ]
+}
+
+Supported operators: JSONLogic core (and, or, !, >, >=, <, ==, in, missing, var, arithmetic), plus extensions:
+
+string.contains, date.diff_months, stats.percent_diff.
+
+
+Variables namespace:
+
+company.* (e.g., company.state, company.formed_on)
+
+owners[n].*
+
+deal.*
+
+metrics.* (flattened snapshot)
+
+vendor.* (CLEAR/courts/UCC, credit, bank APIs)
+
+
+8.2 Built‑in Actions
+
+create_flag (code, message, severity override?)
+
+require_doc (doc_kind)
+
+ask_field (field_path)
+
+route (queue name)
+
+webhook (url, payload_template)
+
+tag_deal (tag)
+
+
+8.3 Evaluation & Conflict Handling
+
+Evaluate guardrails first, then flag_rules.
+
+Idempotency key = (deal_id, rule_id, rule_version)
+
+Merge actions; dedupe by action signature; highest severity wins on duplicates.
+
+
+8.4 Examples
+
+Ownership % mismatch
+
+
+{
+  "name": "Ownership Sum != 100%",
+  "category": "ownership",
+  "severity": "medium",
+  "rule": {"!=": [ {"+": [{"reduce": [{"var":"owners"}, {"+": [{"var":"acc"},{"var":"current.ownership_pct"}]}, 0]}, 0]}, 100 ]},
+  "actions": [
+    {"type":"ask_field", "field_path":"owners[*].ownership_pct"},
+    {"type":"create_flag", "code":"OWNERSHIP_SUM", "message":"Ownership total must equal 100%."}
+  ]
+}
+
+UCC present
+
+
+{ "name": "UCC Present", "category":"positions",
+  "rule": {">": [ {"var":"positions.ucc_count"}, 0 ]},
+  "severity":"low",
+  "actions":[{"type":"create_flag","code":"UCC","message":"UCC filing detected."}]
+}
+
+CA < 4 months (guardrail)
+
+
+{ "name": "CA 4 months", "severity":"block",
+  "rule": {"and": [ {"==": [ {"var":"company.state"}, "CA" ]}, {"<": [ {"var":"metrics.months_in_business"}, 4 ]} ]},
+  "actions": [ {"type":"route","queue":"declines"}, {"type":"create_flag","code":"CA_LT_4M","message":"CA business under 4 months."} ]
+}
+
+
+---
+
+9) Workflow Builder (No‑Code)
+
+Goal: admins compose intake & follow‑ups along a graph that calls rules to decide next steps.
+
+9.1 Node Types
+
+Start / End
+
+AskField (renders form or chat question; validates; writes to DB)
+
+RequestDoc (upload module; enforces doc_kind)
+
+Decision (evaluate rule or expression; route by true/false/multi‑branch)
+
+FlagGate (wait until selected flags resolved)
+
+ConnectorAction (call Pipedrive, bank, e‑sign, data vendor)
+
+OfferStep (show offers; allow override; write audit)
+
+SMS/EmailStep (send template; STOP/HELP compliance baked‑in)
+
+ApprovalStep (human task → queue)
+
+Webhook (notify external systems)
+
+Delay/WaitUntil (time or event)
+
+
+9.2 Graph JSON (stored in workflows.graph_json)
+
+{
+  "nodes": [
+    {"id":"start","type":"Start"},
+    {"id":"needOwnerDOB","type":"Decision","expr":{"missing":["owners[0].dob"]}},
+    {"id":"askDOB","type":"AskField","field":"owners[0].dob","prompt":"What is the owner’s date of birth?"},
+    {"id":"recheck","type":"Decision","expr":{"eval_rule_id":"CA_4_MONTHS"}},
+    {"id":"offer","type":"OfferStep"},
+    {"id":"end","type":"End"}
+  ],
+  "edges": [
+    {"from":"start","to":"needOwnerDOB"},
+    {"from":"needOwnerDOB","to":"askDOB","when":true},
+    {"from":"needOwnerDOB","to":"recheck","when":false},
+    {"from":"askDOB","to":"recheck"},
+    {"from":"recheck","to":"offer","when":true},
+    {"from":"recheck","to":"end","when":false}
+  ]
+}
+
+9.3 Versioning & Publishing
+
+Draft → Validate (schema + dry‑run) → Publish (immutable version).
+
+Existing runs pinned to prior version.
+
+
+
+---
+
+10) APIs (selected)
+
+POST /rules create/edit flag_rules or guardrails; validate JSONLogic.
+
+POST /rules/:id/test input synthetic context → outputs actions.
+
+POST /workflows create graph; POST /workflows/:id/publish.
+
+POST /workflows/:id/run start; POST /workflows/:id/signal (advance with user answer/doc).
+
+POST /entity-resolve as above.
+
+POST /deals/:id/evaluate run guardrails + flags; returns {flags, actions}.
+
+GET /intake/needs?deal_id= compute “ask‑only‑what’s‑missing”.
+
+
+Webhooks (outbound): flag.created, deal.blocked, needs.updated, doc.requested, doc.received, offer.generated, offer.accepted.
+
+
+---
+
+11) Queues & Scale
+
+BullMQ queues: pdf_ingest, metrics_compute, rule_eval, connector_call, campaign_send, pipedrive_etl.
+
+Idempotency: job key = (tenant_id, deal_id, stage, hash(payload)).
+
+Backoff: exponential with jitter; DLQ per queue; retries annotated.
+
+
+
+---
+
+12) Multi‑Tenant Connectors
+
+Connector config stored per tenant in connectors.config_json (KMS‑encrypted).
+
+Execution uses service accounts where possible; stores vendor customer id in external_refs_json on company/deal.
+
+Permissioning: users can only run connectors bound to their tenant_id.
+
+
+
+---
+
+13) Pipedrive ETL & Cutover
+
+ETL jobs:
+
+1. Backfill: import orgs/persons/deals → map to companies/owners/deals (keep Pipedrive IDs in external_refs_json).
+
+
+2. Delta sync: webhooks → queue → upsert.
+
+
+3. Cutover tooling: dry‑run hash compare; diff report; toggle source of truth per pipeline.
+
+
+
+Mapping UI: “Field Mapping” screen to bind Pipedrive fields to our canonical schema.
+
+
+---
+
+14) Front‑End (Bootstrap 5; Star Admin 2‑style)
+
+Screens
+
+1. Automated Flags
+
+Table of rules (name, category, severity, version, enabled)
+
+New/Edit Rule modal with visual builder (conditions → JSONLogic), Actions picker
+
+Test Rule panel (paste context JSON, see actions/flag preview)
+
+Rule Change History & rollback
+
+
+
+2. Guardrails (similar UI, with block/tier outcomes)
+
+
+3. Workflow Builder
+
+Canvas with draggable nodes; snap‑to grid; zoom; mini‑map
+
+Node inspector (props, prompts, validations)
+
+Simulate run with a sample deal context
+
+
+
+4. Intake Needs
+
+Live list generated by planner; one‑click “Ask in Chat” or “Request Doc”
+
+
+
+5. Deals
+
+Timeline (ingest → eval → needs → offers → e‑sign)
+
+Flags panel with resolve workflows
+
+
+
+6. Connectors
+
+OAuth/setup per tenant; field mapping; test connection
+
+
+
+7. Campaigns (SMS/email templates, STOP/HELP built‑in)
+
+
+
+
+---
+
+15) Security & Audit
+
+PII at rest: encrypt columns (EIN, SSN last4) + field‑level RBAC.
+
+All rule edits versioned with created_by; workflow publishes are immutable.
+
+Audit trail on flags, offers, and overrides with reason codes.
+
+
+
+---
+
+16) Acceptance Criteria (maps to checklist)
+
+Merchant/company/deal schema + persistence → Tables in §4; CRUD endpoints; unit tests.
+
+Entity resolution → API returns decision+score; dedupe_hash; tests with edge cases.
+
+Ask‑only‑what’s‑missing → /intake/needs returns prioritized list; chat renders; stops when satisfied.
+
+Persist statements + metrics snapshots → Tables + job chain; snapshot on every doc ingest.
+
+Guardrails → Create/edit UI; evaluate first; block/tier outcomes returned; audit.
+
+CLEAR/courts/ownership automated flags → User‑defined rule sets; examples in §8; actions.
+
+Multi‑tenant connectors → Encrypted configs; per‑tenant execution; test harness.
+
+Queues → BullMQ with idempotency, DLQ, metrics.
+
+Pipedrive ETL & cutover → Backfill + delta; field mapping UI; dry‑run diff.
+
+Front‑end → Screens in §14 wired to APIs; visual builder + rule tester.
+
+
+
+---
+
+17) Phased Delivery Plan
+
+Phase A (2–3 sprints): Schema, persistence, metrics snapshot, guardrails engine, Flags UI + Rule Tester, Ask‑only planner API.
+
+Phase B (2 sprints): Workflow Builder (MVP), ConnectorAction nodes, FlagGate, OfferStep integration.
+
+Phase C (1–2 sprints): Pipedrive ETL + field mapping UI + cutover toggles, Campaigns tie‑in.
+
+
+
+---
+
+18) Developer Notes & Snippets
+
+18.1 Rule Evaluation (TypeScript)
+
+import { applyLogic } from 'json-logic-engine';
+
+export function evalRule(ruleJson: any, context: any) {
+  return applyLogic(ruleJson, context);
+}
+
+export function runFlagRule(rule: FlagRule, ctx: any): Action[] {
+  const hit = !!evalRule(rule.rule, ctx);
+  return hit ? rule.actions : [];
+}
+
+18.2 “Needs” Planner (pseudo)
+
+required = product.required_fields + guardrail.preconditions + flag.preconditions
+known = flatten(context)
+needs = [x for x in required if x not in known or is_empty(known[x])]
+prioritize(needs)
+return needs
+
+18.3 Entity Resolution (Python)
+
+if ein_match(): return existing(1.0)
+if acct_fp_match(): return existing(0.98)
+score = jw(legal_name, candidate.legal_name)
+if score>=0.92 and (phone_match() or address_match() or email_match()):
+    return existing(0.94)
+return new(0.0)
+
+
+---
+
+19) UX Copy Guidelines (Chat)
+
+Always confirm what was captured: “Got it — Owner 1 DOB: 01/02/1980.”
+
+Never ask for a doc we can fetch via connector unless consent missing.
+
+Use micro‑states: Fetching bank transactions… (with spinner + cancellable)
+
+
+
+---
+
+20) Open Questions (for v2+)
+
+Rule marketplace/presets per industry.
+
+Interactive data lineage view (what field fed which rule/offer).
+
+Sandbox vs Prod tenancy—promotion workflow for rules/workflows.
+
+
+
+---
+
+End of Spec v1
+
+
+
+Awesome—built you a full spec for the user-defined automated flags + no-code workflow/chatbot builder and mapped it to the rest of your red items. It’s on the canvas so you can hand it straight to Replit/devs and iterate.
+
+Highlights:
+
+JSONLogic-style rules with actions (create flag, require doc, route, webhook, etc.)
+
+Guardrails first, then flags; “ask-only-what’s-missing” planner drives chat prompts
+
+Workflow builder (drag-and-drop nodes: AskField, Decision, FlagGate, ConnectorAction, OfferStep…)
+
+Postgres schema for company/owners/deals, metrics snapshots, multi-tenant connectors
+
+Entity resolution (EIN/bank acct fingerprint + fuzzy name/address/phone)
+
+BullMQ queues, Pipedrive ETL & cutover, Bootstrap/Star-Admin style screens
+
+
+If you want, I can turn any section into concrete API stubs (FastAPI or Express) or generate the Bootstrap UI scaffolds for:
+
+Automated Flags editor + rule tester
+
+Guardrails editor
+
+Workflow canvas with node palette and inspector
+
+
+Just say which stack you want and I’ll drop in the code.
+
