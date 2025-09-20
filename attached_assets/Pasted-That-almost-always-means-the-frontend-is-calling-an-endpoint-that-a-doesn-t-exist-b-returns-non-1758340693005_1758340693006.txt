@@ -1,0 +1,222 @@
+That almost always means the frontend is calling an endpoint that (a) doesn’t exist, (b) returns non-JSON (401/500/CORS), or (c) is using the wrong method/body. Your OffersLab stack trace points to src/lib/api.ts → parseStatements() and src/pages/OffersLab.tsx’s handleParseStatements.
+
+Below is a drop-in fix pack that (1) adds a backend alias route the UI can call, (2) hardens the frontend API client to call the right URL with proper FormData, and (3) shows good error handling so you’ll see the real error instead of TypeError {}.
+
+A) Backend: add a simple parse alias that returns metrics
+
+This serves /api/statements/parse and returns the latest MetricsSnapshot (the upload route already stores stub metrics, so this gives the UI something to show).
+
+Create server/routes/statements.py:
+
+from __future__ import annotations
+from typing import Any, Dict
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from sqlalchemy.orm import Session
+from sqlalchemy import desc
+from server.core.database import get_db
+from server.core.idempotency import capture_body, require_idempotency, store_idempotent
+from server.core.auth import require_bearer
+from server.models import MetricsSnapshot
+
+router = APIRouter(prefix="/api/statements", tags=["statements"], dependencies=[Depends(require_bearer)])
+
+@router.post("/parse", dependencies=[Depends(capture_body)])
+async def parse_statements(
+    request: Request,
+    merchant_id: str = Query(...),
+    deal_id: str = Query(...),
+    db: Session = Depends(get_db),
+    tenant_id=Depends(require_idempotency),
+) -> Dict[str, Any]:
+    """
+    DEV alias endpoint: return latest MetricsSnapshot for this deal.
+    Your /api/documents/bank/upload already created a snapshot; this
+    endpoint lets the front-end fetch 'cashflow analysis' without
+    running a real parser yet.
+    """
+    if getattr(request.state, "idem_cached", None):
+        return request.state.idem_cached
+
+    row = (
+        db.query(MetricsSnapshot)
+        .filter(MetricsSnapshot.deal_id == deal_id)
+        .order_by(desc(MetricsSnapshot.created_at))
+        .first()
+    )
+    if not row or not getattr(row, "payload", None):
+        raise HTTPException(404, "No metrics available for this deal. Upload 3 statements first.")
+
+    resp = {"ok": True, "metrics": row.payload}
+    await store_idempotent(request, resp)
+    return resp
+
+
+Wire it in server/main.py (add alongside your other routers):
+
+from server.routes import statements  # add import
+# ...
+app.include_router(statements.router)
+
+
+If your UI ever calls /api/statements/parse before upload, it will now get a clear 404 with a message instead of a network error.
+
+B) Frontend: fix the parseStatements client & error handling
+1) Update src/lib/api.ts
+
+Replace your parse call with a FormData upload helper + the new parse alias. Keep both: upload first, then parse to show metrics.
+
+// src/lib/api.ts
+const API_BASE = import.meta.env.VITE_API_BASE ?? ""; // e.g., "http://localhost:8000"
+const TENANT_ID = localStorage.getItem("tenantId") || "T1";
+const AUTH = localStorage.getItem("authToken") || "dev";
+
+function authHeaders(extra: Record<string, string> = {}) {
+  // In dev AUTH_OPTIONAL=true bypasses, but adding headers avoids surprises.
+  return {
+    "Authorization": `Bearer ${AUTH}`,
+    "X-Tenant-ID": TENANT_ID,
+    ...extra,
+  };
+}
+
+async function handleJSON(res: Response) {
+  const text = await res.text();
+  try {
+    const json = text ? JSON.parse(text) : {};
+    if (!res.ok) {
+      const msg = (json && (json.detail || json.error)) || res.statusText || "Request failed";
+      throw new Error(`${res.status} ${msg}`);
+    }
+    return json;
+  } catch (e) {
+    if (!res.ok) throw new Error(`${res.status} ${text || res.statusText}`);
+    throw e;
+  }
+}
+
+export async function uploadBankStatements(params: { merchantId: string; dealId: string; files: File[]; idem?: string }) {
+  const { merchantId, dealId, files, idem } = params;
+  if (files.length !== 3) throw new Error("Exactly 3 PDF statements are required.");
+
+  const fd = new FormData();
+  files.forEach((f) => fd.append("files", f));
+
+  const url = `${API_BASE}/api/documents/bank/upload?merchant_id=${encodeURIComponent(merchantId)}&deal_id=${encodeURIComponent(dealId)}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      ...authHeaders({ "Idempotency-Key": idem ?? crypto.randomUUID() }),
+      // DO NOT set Content-Type here (browser sets multipart boundary)
+    },
+    body: fd,
+  });
+  return handleJSON(res); // { ok:true, documents:[...], metrics:{...} }
+}
+
+export async function parseStatements(params: { merchantId: string; dealId: string; idem?: string }) {
+  const { merchantId, dealId, idem } = params;
+  const url = `${API_BASE}/api/statements/parse?merchant_id=${encodeURIComponent(merchantId)}&deal_id=${encodeURIComponent(dealId)}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: authHeaders({ "Content-Type": "application/json", "Idempotency-Key": idem ?? crypto.randomUUID() }),
+    body: "{}",
+  });
+  return handleJSON(res); // { ok:true, metrics:{...} }
+}
+
+export async function generateOffers(params: { dealId: string; idem?: string }) {
+  const { dealId, idem } = params;
+  const url = `${API_BASE}/api/deals/${encodeURIComponent(dealId)}/offers`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: authHeaders({ "Content-Type": "application/json", "Idempotency-Key": idem ?? crypto.randomUUID() }),
+    body: "{}",
+  });
+  return handleJSON(res); // { offers:[...] }
+}
+
+2) Update src/pages/OffersLab.tsx (the handler)
+
+Change your handler so it:
+
+uploads the 3 PDFs,
+
+calls the new parse endpoint,
+
+then calls generateOffers,
+
+and shows the real error text.
+
+// src/pages/OffersLab.tsx (inside your component)
+const [busy, setBusy] = useState(false);
+const [metrics, setMetrics] = useState<any>(null);
+const [offers, setOffers] = useState<any[]>([]);
+const [error, setError] = useState<string | null>(null);
+
+async function handleParseStatements(files: File[]) {
+  setBusy(true); setError(null);
+  try {
+    if (files.length !== 3) throw new Error("Please select exactly 3 PDF statements.");
+
+    // 1) Upload
+    const up = await uploadBankStatements({ merchantId: merchantId!, dealId: dealId!, files });
+    if (up?.metrics) setMetrics(up.metrics);
+
+    // 2) Parse (alias) – returns latest MetricsSnapshot
+    const parsed = await parseStatements({ merchantId: merchantId!, dealId: dealId! });
+    if (parsed?.metrics) setMetrics(parsed.metrics);
+
+    // 3) Offers
+    const off = await generateOffers({ dealId: dealId! });
+    setOffers(off.offers ?? []);
+  } catch (e: any) {
+    console.error("Parse flow failed:", e);
+    setError(e?.message || "Parse failed");
+  } finally {
+    setBusy(false);
+  }
+}
+
+
+(Make sure merchantId/dealId are set earlier in the page state; your deal creation call should be populating them.)
+
+C) Quick sanity on the backend (from Replit shell)
+# Make sure the new router is loaded
+pkill -f "uvicorn .*server\.main:app" >/dev/null 2>&1 || true
+uvicorn server.main:app --host 0.0.0.0 --port 8000 --reload >/tmp/uw.log 2>&1 &
+sleep 2
+
+# Create deal (if you need fresh IDs)
+AUTH='-H "Authorization: Bearer dev" -H "X-Tenant-ID:T1"'
+JSON='-H "Content-Type: application/json"'
+RESP=$(curl -s -X POST http://localhost:8000/api/deals/start $AUTH $JSON -H "Idempotency-Key:k1" \
+  -d '{"merchant_hint":{"phone":"+19735550188","legal_name":"Maple Deli LLC"},"create_if_missing":true}')
+MID=$(echo "$RESP" | python -c 'import sys,json;print(json.load(sys.stdin).get("merchant_id",""))')
+DID=$(echo "$RESP" | python -c 'import sys,json;print(json.load(sys.stdin).get("deal_id",""))')
+
+# Minimal 3 PDFs
+printf '%%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n' > one.pdf
+cp one.pdf two.pdf; cp one.pdf three.pdf
+
+# Upload → should return metrics
+curl -s -X POST "http://localhost:8000/api/documents/bank/upload?merchant_id=$MID&deal_id=$DID" \
+  -F "files=@one.pdf" -F "files=@two.pdf" -F "files=@three.pdf" \
+  $AUTH -H "Idempotency-Key:k2" | jq
+
+# Parse alias → returns latest metrics
+curl -s -X POST "http://localhost:8000/api/statements/parse?merchant_id=$MID&deal_id=$DID" \
+  $AUTH -H "Idempotency-Key:k3" -H "Content-Type: application/json" -d '{}' | jq
+
+# Offers → MCA (daily + weekly + split)
+curl -s -X POST "http://localhost:8000/api/deals/$DID/offers" \
+  $AUTH -H "Idempotency-Key:k4" -H "Content-Type: application/json" -d '{}' | jq
+
+Why this fixes your errors
+
+TypeError {} came from the frontend trying to parse a non-JSON error (401/404/500/CORS). handleJSON() now shows the real server error text.
+
+Failed to fetch typically means wrong URL/CORS. We use VITE_API_BASE + correct routes and send proper headers. The upload uses FormData (no manual Content-Type), which avoids boundary errors.
+
+The UI’s “cashflow analysis” now calls a guaranteed endpoint (/api/statements/parse) that returns the latest metrics your upload already wrote—so the page has something to render even before you plug in the real parser.
+
+If the console still shows an error after these changes, paste the exact message from handleJSON() (you’ll get the HTTP status and server text), and I’ll give you a pinpoint patch for that route.

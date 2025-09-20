@@ -44,15 +44,38 @@ export default function OffersLab() {
     }
 
     setUploading(true)
+    setError(null)
+    
+    // For now, we'll use demo IDs. In a real app, these would come from deal creation
+    const merchantId = "demo-merchant-123"
+    const dealId = "demo-deal-456"
+    
     try {
       console.log('Analyzing files:', files.map(f => f.name))
-      const response = await apiClient.parseStatements(files)
-      if (response.success && response.data) {
-        setCurrentMetrics(response.data.metrics)
+      
+      // 1) Upload the 3 PDFs
+      const uploadResult = await apiClient.uploadBankStatements({ 
+        merchantId, 
+        dealId, 
+        files 
+      })
+      if (uploadResult?.metrics) setCurrentMetrics(uploadResult.metrics)
+
+      // 2) Parse (alias) – returns latest MetricsSnapshot
+      const parseResult = await apiClient.parseStatements({ 
+        merchantId, 
+        dealId 
+      })
+      if (parseResult?.metrics) setCurrentMetrics(parseResult.metrics)
+
+      // 3) Auto-generate offers after successful parse
+      if (parseResult?.metrics) {
+        await handleGenerateOffers()
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to parse statements:', error)
-      alert(`Analysis failed: ${error.message || 'Unknown error'}`)
+      setError(error?.message || 'Parse failed')
+      
       // Show demo metrics for UI purposes based on uploaded files count
       const files = filesToAnalyze || uploadedFiles
       const monthsCount = files.length

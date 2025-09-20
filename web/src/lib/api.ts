@@ -60,12 +60,15 @@ class ApiClient {
   }
 
   // Bank analysis
-  async parseStatements(files: File[]) {
+  async uploadBankStatements(params: { merchantId: string; dealId: string; files: File[]; idem?: string }) {
+    const { merchantId, dealId, files, idem } = params
+    if (files.length !== 3) throw new Error("Exactly 3 PDF statements are required.")
+
     const formData = new FormData()
     files.forEach(file => formData.append('files', file))
-    
+
     const config = this.getConfig()
-    const url = `${config.baseUrl}/api/bank/parse`
+    const url = `${config.baseUrl}/api/documents/bank/upload?merchant_id=${encodeURIComponent(merchantId)}&deal_id=${encodeURIComponent(dealId)}`
     
     const headers: Record<string, string> = {}
     
@@ -73,22 +76,47 @@ class ApiClient {
       headers['Authorization'] = `Bearer ${config.apiKey}`
     }
     
-    if (config.idempotencyEnabled) {
-      headers['Idempotency-Key'] = uuidv4()
+    if (idem || config.idempotencyEnabled) {
+      headers['Idempotency-Key'] = idem ?? uuidv4()
     }
-    
+
     const response = await fetch(url, {
       method: 'POST',
       headers,
       body: formData,
     })
+
+    return this.handleJSON(response)
+  }
+
+  async parseStatements(params: { merchantId: string; dealId: string; idem?: string }) {
+    const { merchantId, dealId, idem } = params
+    const config = this.getConfig()
+    const url = `${config.baseUrl}/api/statements/parse?merchant_id=${encodeURIComponent(merchantId)}&deal_id=${encodeURIComponent(dealId)}`
     
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData.error?.message || `HTTP ${response.status}: ${response.statusText}`)
+    return this.request(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Idempotency-Key': idem ?? uuidv4()
+      },
+      body: JSON.stringify({})
+    })
+  }
+
+  private async handleJSON(res: Response) {
+    const text = await res.text()
+    try {
+      const json = text ? JSON.parse(text) : {}
+      if (!res.ok) {
+        const msg = (json && (json.detail || json.error)) || res.statusText || "Request failed"
+        throw new Error(`${res.status} ${msg}`)
+      }
+      return json
+    } catch (e) {
+      if (!res.ok) throw new Error(`${res.status} ${text || res.statusText}`)
+      throw e
     }
-    
-    return response.json()
   }
 
   // Offers
