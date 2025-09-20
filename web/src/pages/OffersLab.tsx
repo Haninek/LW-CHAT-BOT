@@ -1,9 +1,48 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { Upload, FileText, DollarSign, Calculator, Download, Zap, TrendingUp, AlertCircle, CheckCircle } from 'lucide-react'
 import { useDropzone } from 'react-dropzone'
 import { useAppStore } from '../state/useAppStore'
 import { apiClient } from '../lib/api'
+
+type ToastTone = 'info' | 'warning' | 'error'
+
+type ToastState = {
+  message: string
+  tone: ToastTone
+}
+
+
+type MerchantSummary = {
+  id: string
+  name: string
+  status?: string
+  reused?: boolean
+}
+
+type DealSummary = {
+  id: string
+  status?: string
+  reused?: boolean
+}
+
+const toastToneStyles: Record<ToastTone, { container: string; icon: string; button: string }> = {
+  info: {
+    container: 'bg-slate-900/95 text-slate-100 border-slate-700 shadow-slate-900/30 backdrop-blur',
+    icon: 'text-emerald-300',
+    button: 'text-slate-200 hover:text-white'
+  },
+  warning: {
+    container: 'bg-amber-50 text-amber-800 border-amber-200 shadow-amber-200/60',
+    icon: 'text-amber-500',
+    button: 'text-amber-600 hover:text-amber-700'
+  },
+  error: {
+    container: 'bg-red-50 text-red-800 border-red-200 shadow-red-200/60',
+    icon: 'text-red-500',
+    button: 'text-red-600 hover:text-red-700'
+  }
+}
 
 export default function OffersLab() {
   const { currentMetrics, setCurrentMetrics, offerOverrides } = useAppStore()
@@ -12,6 +51,86 @@ export default function OffersLab() {
   const [generatedOffers, setGeneratedOffers] = useState<any[]>([])
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [merchantInfo, setMerchantInfo] = useState<MerchantSummary | null>(null)
+  const [dealInfo, setDealInfo] = useState<DealSummary | null>(null)
+  const [toast, setToast] = useState<ToastState | null>(null)
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current)
+        toastTimeoutRef.current = null
+      }
+    }
+  }, [])
+
+  const dismissToast = useCallback(() => {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current)
+      toastTimeoutRef.current = null
+    }
+    setToast(null)
+  }, [])
+
+  const showToast = useCallback((message: string, tone: ToastTone = 'info') => {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current)
+      toastTimeoutRef.current = null
+    }
+    setToast({ message, tone })
+    toastTimeoutRef.current = setTimeout(() => {
+      setToast(null)
+      toastTimeoutRef.current = null
+    }, 5000)
+  }, [])
+
+  const ensureMerchantAndDeal = useCallback(async () => {
+    let merchantId = merchantInfo?.id
+    let dealId = dealInfo?.id
+
+    if (!merchantId) {
+      const uniqueSuffix = Date.now().toString().slice(-6)
+      const fallbackName = `Demo Merchant ${uniqueSuffix}`
+      const response: any = await apiClient.createMerchant({
+        legalName: fallbackName,
+        phone: `555${uniqueSuffix.padStart(7, '0')}`,
+        email: `owner+${uniqueSuffix}@demo.mca`,
+        state: 'NY',
+        city: 'New York',
+      })
+      const created = response?.merchant
+      if (!created?.id) {
+        throw new Error('Unable to create merchant')
+      }
+      merchantId = created.id
+      setMerchantInfo({
+        id: created.id,
+        name: created.legal_name || created.legalName || fallbackName,
+        status: created.status,
+        reused: Boolean(response?.reused)
+      })
+    }
+
+    if (!dealId && merchantId) {
+      const dealResponse: any = await apiClient.startDeal({ merchantId })
+      if (!dealResponse?.deal_id) {
+        throw new Error('Unable to start deal')
+      }
+      dealId = dealResponse.deal_id
+      setDealInfo({
+        id: dealResponse.deal_id,
+        status: dealResponse.status,
+        reused: Boolean(dealResponse.reused)
+      })
+    }
+
+    if (!merchantId || !dealId) {
+      throw new Error('Missing merchant or deal identifiers')
+    }
+
+    return { merchantId, dealId }
+  }, [dealInfo, merchantInfo])
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length < 3) {
@@ -38,48 +157,49 @@ export default function OffersLab() {
   })
 
   const handleParseStatements = async (filesToAnalyze?: File[]) => {
-    const files = filesToAnalyze || uploadedFiles
-    if (files.length < 3) {
+    const selectedFiles = filesToAnalyze || uploadedFiles
+    if (selectedFiles.length < 3) {
       alert('Please upload minimum 3 bank statements (3+ months required)')
       return
     }
 
     setUploading(true)
     setError(null)
-    
-    // For now, we'll use demo IDs. In a real app, these would come from deal creation
-    const merchantId = "demo-merchant-123"
-    const dealId = "demo-deal-456"
-    
+    dismissToast()
+
     try {
-      console.log('Analyzing files:', files.map(f => f.name))
-      
-      // 1) Upload the 3 PDFs
-      const uploadResult = await apiClient.uploadBankStatements({ 
-        merchantId, 
-        dealId, 
-        files 
-      })
-      if (uploadResult?.metrics) setCurrentMetrics(uploadResult.metrics)
+      const { merchantId, dealId } = await ensureMerchantAndDeal()
+      setGeneratedOffers([])
 
-      // 2) Parse (alias) – returns latest MetricsSnapshot
-      const parseResult = await apiClient.parseStatements({ 
-        merchantId, 
-        dealId 
-      })
-      if (parseResult?.metrics) setCurrentMetrics(parseResult.metrics)
+      console.log('Analyzing files:', selectedFiles.map(f => f.name))
 
-      // 3) Auto-generate offers after successful parse
+      const uploadResult = await apiClient.uploadBankStatements({
+        merchantId,
+        dealId,
+        files: selectedFiles
+      })
+      if (uploadResult?.metrics) {
+        setCurrentMetrics(uploadResult.metrics)
+      }
+
+      const parseResult = await apiClient.parseStatements({
+        merchantId,
+        dealId
+      })
+
       if (parseResult?.metrics) {
-        await handleGenerateOffers()
+        setCurrentMetrics(parseResult.metrics)
+        setError(null)
+        await handleGenerateOffers(parseResult.metrics)
       }
     } catch (error: any) {
       console.error('Failed to parse statements:', error)
-      setError(error?.message || 'Parse failed')
-      
-      // Show demo metrics for UI purposes based on uploaded files count
-      const files = filesToAnalyze || uploadedFiles
-      const monthsCount = files.length
+      const fallbackMessage = error?.message || 'Parse failed'
+      setError(fallbackMessage)
+      setGeneratedOffers([])
+      showToast('Parser unavailable – showing demo metrics instead.', 'warning')
+
+      const monthsCount = selectedFiles.length
       const demoMonths = Array.from({ length: monthsCount }, (_, i) => ({
         statement_month: new Date(2024, i, 1).toISOString().slice(0, 7),
         total_deposits: 125000 + (i * 5000),
@@ -88,13 +208,16 @@ export default function OffersLab() {
         nsf_count: Math.floor(Math.random() * 2),
         days_negative: Math.floor(Math.random() * 3)
       }))
-      
+
       setCurrentMetrics({
         months: demoMonths,
         avg_monthly_revenue: 133333,
         avg_daily_balance: 46667,
+        avg_daily_balance_3m: 46667,
         total_nsf_fees: 2,
+        total_nsf_3m: 2,
         days_negative_balance: 6,
+        total_days_negative_3m: 6,
         months_analyzed: monthsCount,
         statements_processed: monthsCount,
         gpt_analysis: false
@@ -104,12 +227,13 @@ export default function OffersLab() {
     }
   }
 
-  const handleGenerateOffers = async () => {
-    if (!currentMetrics) return
+  const handleGenerateOffers = async (metricsOverride?: any) => {
+    const metricsToUse = metricsOverride ?? currentMetrics
+    if (!metricsToUse) return
 
     setGenerating(true)
     try {
-      const response = await apiClient.generateOffers(currentMetrics, offerOverrides)
+      const response = await apiClient.generateOffers(metricsToUse, offerOverrides)
       if (response.success && response.data?.offers) {
         setGeneratedOffers(response.data.offers)
       }
@@ -209,6 +333,32 @@ export default function OffersLab() {
               </p>
             </div>
             <div className="flex items-center space-x-4">
+              {merchantInfo && (
+                <div className="hidden sm:flex flex-col items-end text-xs text-slate-500 max-w-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-slate-700 truncate" title={merchantInfo.name}>{merchantInfo.name}</span>
+                    {merchantInfo.status && (
+                      <span
+                        className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide ${
+                          merchantInfo.status === 'existing'
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                            : 'border-blue-200 bg-blue-50 text-blue-700'
+                        }`}
+                      >
+                        {merchantInfo.status === 'existing' ? 'Existing' : 'New'}
+                      </span>
+                    )}
+                  </div>
+                  <span className="font-mono text-[11px] text-slate-400 truncate" title={merchantInfo.id}>
+                    Merchant ID: {merchantInfo.id}
+                  </span>
+                  {dealInfo && (
+                    <span className="font-mono text-[11px] text-slate-400 truncate" title={dealInfo.id}>
+                      Deal ID: {dealInfo.id}
+                    </span>
+                  )}
+                </div>
+              )}
               {currentMetrics && (
                 <div className="flex items-center px-3 py-1 bg-emerald-50 rounded-full border border-emerald-200">
                   <CheckCircle className="w-4 h-4 text-emerald-600 mr-2" />
@@ -245,6 +395,60 @@ export default function OffersLab() {
                   />
                 )}
               </h3>
+
+              {error && (
+                <div className="mb-4 flex items-start space-x-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-700">
+                  <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                  <span className="text-sm">{error}</span>
+                </div>
+              )}
+
+              {(merchantInfo || dealInfo) && (
+                <div className="mb-4 rounded-xl border border-slate-200/60 bg-slate-50/80 px-4 py-3 text-xs text-slate-600">
+                  {merchantInfo && (
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="truncate">
+                          <span className="text-[11px] uppercase tracking-wide text-slate-400">Merchant</span>
+                          <div className="font-medium text-slate-700 truncate" title={merchantInfo.name}>
+                            {merchantInfo.name}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {merchantInfo.status && (
+                            <span
+                              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide ${
+                                merchantInfo.status === 'existing'
+                                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                  : 'border-blue-200 bg-blue-50 text-blue-700'
+                              }`}
+                            >
+                              {merchantInfo.status === 'existing' ? 'Existing' : 'New'}
+                            </span>
+                          )}
+                          <span className="font-mono text-[11px] text-slate-400 truncate" title={merchantInfo.id}>
+                            {merchantInfo.id}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {dealInfo && (
+                    <div className="mt-3 flex items-center justify-between gap-2">
+                      <div className="truncate">
+                        <span className="text-[11px] uppercase tracking-wide text-slate-400">Deal</span>
+                        <div className="font-medium text-slate-700 truncate">
+                          {(dealInfo.status || 'open').toUpperCase()}
+                        </div>
+                      </div>
+                      <span className="font-mono text-[11px] text-slate-400 truncate" title={dealInfo.id}>
+                        {dealInfo.id}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <motion.div
                 {...getRootProps()}
@@ -575,8 +779,32 @@ export default function OffersLab() {
               )}
             </div>
           </motion.div>
-        </div>
       </div>
+    </div>
+
+      {toast && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={`fixed bottom-4 right-4 z-50 flex max-w-sm items-start space-x-3 rounded-xl border px-4 py-3 shadow-lg ${toastToneStyles[toast.tone].container}`}
+        >
+          <div className="mt-0.5">
+            {toast.tone === 'info' ? (
+              <CheckCircle className={`h-5 w-5 ${toastToneStyles[toast.tone].icon}`} />
+            ) : (
+              <AlertCircle className={`h-5 w-5 ${toastToneStyles[toast.tone].icon}`} />
+            )}
+          </div>
+          <div className="flex-1 text-sm leading-snug">{toast.message}</div>
+          <button
+            type="button"
+            onClick={dismissToast}
+            className={`ml-2 text-xs font-semibold uppercase tracking-wide transition ${toastToneStyles[toast.tone].button}`}
+          >
+            Close
+          </button>
+        </motion.div>
+      )}
     </div>
   )
 }

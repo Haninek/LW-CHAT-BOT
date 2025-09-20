@@ -3,6 +3,32 @@ import { persist } from 'zustand/middleware'
 import { Rule, Persona, Merchant, FieldId, RuleEngineResult, Template } from '../types'
 // Simplified state management without external dependencies
 
+const getEnvValue = (key: string): string | undefined => {
+  if (typeof window !== 'undefined') {
+    const win = window as any
+    if (win.ENV?.[key]) return win.ENV[key]
+    if (win[key]) return win[key]
+  }
+
+  try {
+    const meta = import.meta as any
+    if (meta?.env?.[key]) {
+      return meta.env[key]
+    }
+  } catch (error) {
+    // Ignore environments where import.meta is undefined
+  }
+
+  const globalAny = globalThis as any
+  if (globalAny?.ENV?.[key]) return globalAny.ENV[key]
+  if (globalAny?.[key]) return globalAny[key]
+
+  return undefined
+}
+
+const defaultBaseUrl = getEnvValue('VITE_API_BASE') || ''
+const defaultApiKey = getEnvValue('VITE_API_KEY') || ''
+
 export type ChatMessage = {
   id: string
   type: 'user' | 'bot'
@@ -80,8 +106,8 @@ export const useAppStore = create<AppState>()(
     (set, get) => ({
       // API Configuration - Use direct backend connection for Replit
       apiConfig: {
-        baseUrl: 'http://172.31.89.226:8000',  // Direct connection to backend on internal network
-        apiKey: (typeof window !== 'undefined' && (window as any).ENV?.VITE_API_KEY) || '',
+        baseUrl: defaultBaseUrl,
+        apiKey: defaultApiKey,
         idempotencyEnabled: true
       },
       setApiConfig: (config) => set((state) => ({

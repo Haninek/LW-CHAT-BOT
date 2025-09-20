@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from typing import Optional, List
+from typing import Optional, List, Dict
 from pydantic import BaseModel
 import uuid
 
@@ -19,6 +19,30 @@ class MerchantResponse(BaseModel):
     status: str
     phone: Optional[str] = None
     email: Optional[str] = None
+
+    class Config:
+        orm_mode = True
+
+
+class CreateMerchantRequest(BaseModel):
+    legal_name: str
+    dba: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    ein: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip: Optional[str] = None
+
+
+class CreateMerchantResponse(BaseModel):
+    success: bool
+    merchant: MerchantResponse
+    reused: bool = False
+
+    class Config:
+        orm_mode = True
 
 
 @router.get("/")
@@ -48,6 +72,126 @@ async def search_merchants(
         )
         for m in merchants
     ]
+
+
+def _merchant_to_response(merchant: Merchant, status_override: Optional[str] = None) -> MerchantResponse:
+    """Convert Merchant ORM object into response model."""
+    status = status_override or merchant.status or "new"
+    return MerchantResponse(
+        id=merchant.id,
+        legal_name=merchant.legal_name,
+        status=status,
+        phone=merchant.phone,
+        email=merchant.email
+    )
+
+
+def _upsert_field_states(
+    db: Session,
+    merchant: Merchant,
+    values: Dict[str, Optional[str]],
+    source: str = "manual"
+) -> None:
+    """Create or update FieldState records for provided values."""
+    if not values:
+        return
+
+    existing = {
+        fs.field_id: fs
+        for fs in db.query(FieldState).filter(FieldState.merchant_id == merchant.id).all()
+    }
+
+    for field_id, value in values.items():
+        if not value:
+            continue
+        if field_id in existing:
+            fs = existing[field_id]
+            fs.value = value
+            fs.source = source
+        else:
+            db.add(FieldState(
+                merchant_id=merchant.id,
+                field_id=field_id,
+                value=value,
+                source=source
+            ))
+
+
+@router.post("/create", response_model=CreateMerchantResponse)
+async def create_merchant(
+    request: CreateMerchantRequest,
+    db: Session = Depends(get_db)
+) -> CreateMerchantResponse:
+    """Create a merchant or reuse an existing match based on EIN/email/phone."""
+
+    match_fields = [
+        (Merchant.ein, request.ein),
+        (Merchant.email, request.email),
+        (Merchant.phone, request.phone)
+    ]
+
+    merchant = None
+    for column, value in match_fields:
+        if value:
+            merchant = db.query(Merchant).filter(column == value).first()
+            if merchant:
+                break
+
+    reused = merchant is not None
+
+    if not merchant:
+        merchant = Merchant(
+            id=str(uuid.uuid4()),
+            legal_name=request.legal_name,
+            dba=request.dba,
+            phone=request.phone,
+            email=request.email,
+            ein=request.ein,
+            address=request.address,
+            city=request.city,
+            state=request.state,
+            zip=request.zip,
+            status="new"
+        )
+        db.add(merchant)
+    else:
+        # Update basic profile details if new data is provided
+        updates = {
+            "legal_name": request.legal_name,
+            "dba": request.dba,
+            "phone": request.phone,
+            "email": request.email,
+            "ein": request.ein,
+            "address": request.address,
+            "city": request.city,
+            "state": request.state,
+            "zip": request.zip,
+        }
+        for attr, value in updates.items():
+            if value and getattr(merchant, attr) != value:
+                setattr(merchant, attr, value)
+        if not merchant.status or merchant.status == "new":
+            merchant.status = "existing"
+
+    field_values = {
+        "business.legal_name": request.legal_name,
+        "business.dba": request.dba,
+        "contact.phone": request.phone,
+        "contact.email": request.email,
+        "business.ein": request.ein,
+        "business.address": request.address,
+        "business.city": request.city,
+        "business.state": request.state,
+        "business.zip": request.zip,
+    }
+
+    _upsert_field_states(db, merchant, field_values)
+
+    db.commit()
+    db.refresh(merchant)
+
+    response_status = "existing" if reused else merchant.status or "new"
+    return CreateMerchantResponse(success=True, reused=reused, merchant=_merchant_to_response(merchant, response_status))
 
 
 @router.get("/resolve")
