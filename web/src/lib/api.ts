@@ -17,14 +17,19 @@ class ApiClient {
       'Content-Type': 'application/json',
       ...(options.headers as Record<string, string> || {}),
     }
-    
+
+    const method = (options.method || 'GET').toUpperCase()
+    const hasIdempotencyHeader = Object.keys(headers).some(
+      (key) => key.toLowerCase() === 'idempotency-key'
+    )
+
     // Add API key if available
     if (config.apiKey) {
       headers['Authorization'] = `Bearer ${config.apiKey}`
     }
-    
+
     // Add idempotency key for POST requests if enabled
-    if (config.idempotencyEnabled && options.method === 'POST') {
+    if (config.idempotencyEnabled && method === 'POST' && !hasIdempotencyHeader) {
       headers['Idempotency-Key'] = uuidv4()
     }
     
@@ -91,17 +96,84 @@ class ApiClient {
 
   async parseStatements(params: { merchantId: string; dealId: string; idem?: string }) {
     const { merchantId, dealId, idem } = params
-    const config = this.getConfig()
-    const url = `${config.baseUrl}/api/statements/parse?merchant_id=${encodeURIComponent(merchantId)}&deal_id=${encodeURIComponent(dealId)}`
-    
-    return this.request(url, {
+    const endpoint = `/api/statements/parse?merchant_id=${encodeURIComponent(merchantId)}&deal_id=${encodeURIComponent(dealId)}`
+
+    const options: RequestInit = {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Idempotency-Key': idem ?? uuidv4()
-      },
       body: JSON.stringify({})
-    })
+    }
+
+    if (idem) {
+      options.headers = {
+        'Idempotency-Key': idem
+      }
+    }
+
+    return this.request(endpoint, options)
+  }
+
+  async createMerchant(params: {
+    legalName: string
+    dba?: string
+    phone?: string
+    email?: string
+    ein?: string
+    address?: string
+    city?: string
+    state?: string
+    zip?: string
+    idem?: string
+  }) {
+    const { legalName, dba, phone, email, ein, address, city, state, zip, idem } = params
+
+    const payload = {
+      legal_name: legalName,
+      dba,
+      phone,
+      email,
+      ein,
+      address,
+      city,
+      state,
+      zip,
+    }
+
+    const options: RequestInit = {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }
+
+    if (idem) {
+      options.headers = {
+        'Idempotency-Key': idem
+      }
+    }
+
+    return this.request('/api/merchants/create', options)
+  }
+
+  async startDeal(params: { merchantId: string; fundingAmount?: number; idem?: string }) {
+    const { merchantId, fundingAmount, idem } = params
+    const payload: Record<string, unknown> = {
+      merchant_id: merchantId
+    }
+
+    if (typeof fundingAmount === 'number') {
+      payload.funding_amount = fundingAmount
+    }
+
+    const options: RequestInit = {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }
+
+    if (idem) {
+      options.headers = {
+        'Idempotency-Key': idem
+      }
+    }
+
+    return this.request('/api/deals/start', options)
   }
 
   private async handleJSON(res: Response) {
