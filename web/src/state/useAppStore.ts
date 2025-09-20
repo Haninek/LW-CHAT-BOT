@@ -65,6 +65,12 @@ interface AppState {
   sidebarOpen: boolean
   setSidebarOpen: (open: boolean) => void
   
+  // Metrics and Offers State
+  currentMetrics: any
+  setCurrentMetrics: (metrics: any) => void
+  offerOverrides: any
+  setOfferOverrides: (overrides: any) => void
+  
   // Initialization
   initialize: () => void
 }
@@ -167,6 +173,12 @@ export const useAppStore = create<AppState>()(
       // UI State
       sidebarOpen: true,
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
+      
+      // Metrics and Offers State
+      currentMetrics: null,
+      setCurrentMetrics: (metrics) => set({ currentMetrics: metrics }),
+      offerOverrides: {},
+      setOfferOverrides: (overrides) => set({ offerOverrides: overrides }),
 
       // Initialization
       initialize: () => {

@@ -13,8 +13,12 @@ export default function OffersLab() {
   const [generating, setGenerating] = useState(false)
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
-    if (acceptedFiles.length > 3) {
-      alert('Please upload exactly 3 bank statements')
+    if (acceptedFiles.length < 3) {
+      alert('Please upload minimum 3 bank statements (3+ months required)')
+      return
+    }
+    if (acceptedFiles.length > 12) {
+      alert('Maximum 12 bank statements allowed (12 months max)')
       return
     }
     setUploadedFiles(acceptedFiles)
@@ -25,12 +29,13 @@ export default function OffersLab() {
     accept: {
       'application/pdf': ['.pdf'],
     },
-    maxFiles: 3,
+    minFiles: 3,
+    maxFiles: 12,
   })
 
   const handleParseStatements = async () => {
-    if (uploadedFiles.length !== 3) {
-      alert('Please upload exactly 3 bank statements')
+    if (uploadedFiles.length < 3) {
+      alert('Please upload minimum 3 bank statements (3+ months required)')
       return
     }
 
@@ -42,17 +47,26 @@ export default function OffersLab() {
       }
     } catch (error) {
       console.error('Failed to parse statements:', error)
-      // Show demo metrics for UI purposes
+      // Show demo metrics for UI purposes based on uploaded files count
+      const monthsCount = uploadedFiles.length
+      const demoMonths = Array.from({ length: monthsCount }, (_, i) => ({
+        statement_month: new Date(2024, i, 1).toISOString().slice(0, 7),
+        total_deposits: 125000 + (i * 5000),
+        avg_daily_balance: 45000 + (i * 1000),
+        ending_balance: 52000 + (i * 500),
+        nsf_count: Math.floor(Math.random() * 2),
+        days_negative: Math.floor(Math.random() * 3)
+      }))
+      
       setCurrentMetrics({
-        months: [
-          { statement_month: '2024-01', total_deposits: 125000, avg_daily_balance: 45000, ending_balance: 52000, nsf_count: 1, days_negative: 2 },
-          { statement_month: '2024-02', total_deposits: 140000, avg_daily_balance: 48000, ending_balance: 55000, nsf_count: 0, days_negative: 1 },
-          { statement_month: '2024-03', total_deposits: 135000, avg_daily_balance: 47000, ending_balance: 53000, nsf_count: 1, days_negative: 3 }
-        ],
+        months: demoMonths,
         avg_monthly_revenue: 133333,
-        avg_daily_balance_3m: 46667,
-        total_nsf_3m: 2,
-        total_days_negative_3m: 6
+        avg_daily_balance: 46667,
+        total_nsf_fees: 2,
+        days_negative_balance: 6,
+        months_analyzed: monthsCount,
+        statements_processed: monthsCount,
+        gpt_analysis: false
       })
     } finally {
       setUploading(false)

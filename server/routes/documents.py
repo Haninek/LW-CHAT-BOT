@@ -5,6 +5,7 @@ from core.idempotency import capture_body, require_idempotency, store_idempotent
 from models import Document, MetricsSnapshot, Event, Deal, Merchant
 from services.storage import upload_private_bytes
 from services.antivirus import scan_bytes
+from services.bank_analysis import BankStatementAnalyzer
 import json
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
@@ -23,8 +24,11 @@ async def upload_bank_statements(
     if getattr(request.state, "idem_cached", None):
         return request.state.idem_cached
     
-    if len(files) != 3:
-        raise HTTPException(400, detail="Exactly 3 PDF statements are required")
+    if len(files) < 3:
+        raise HTTPException(400, detail="Minimum 3 PDF bank statements required (3+ months)")
+    
+    if len(files) > 12:
+        raise HTTPException(400, detail="Maximum 12 PDF bank statements allowed (12 months max)")
     stored = []
     for f in files:
         if f.content_type not in ("application/pdf", "application/x-pdf"):
@@ -43,8 +47,20 @@ async def upload_bank_statements(
         db.add(doc); db.commit(); db.refresh(doc)
         stored.append({"id": doc.id, "filename": doc.filename})
 
-    # TODO: call your parser; stub metrics for now:
-    metrics = {"avg_monthly_revenue": 80000, "avg_daily_balance_3m": 12000, "total_nsf_3m": 1, "total_days_negative_3m": 2}
+    # Analyze bank statements with GPT
+    analyzer = BankStatementAnalyzer()
+    
+    # Read file contents for analysis
+    file_contents = []
+    file_names = []
+    for f in files:
+        await f.seek(0)  # Reset file pointer
+        content = await f.read()
+        file_contents.append(content)
+        file_names.append(f.filename)
+    
+    # Get comprehensive GPT analysis
+    metrics = analyzer.analyze_statements(file_contents, file_names)
     snap = MetricsSnapshot(deal_id=deal_id, source="statements", payload=metrics)
     db.add(snap)
     db.add(Event(tenant_id=tenant_id, merchant_id=merchant_id, deal_id=deal_id, type="metrics.ready", data_json=json.dumps(metrics)))
