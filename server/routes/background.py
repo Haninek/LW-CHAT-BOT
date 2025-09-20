@@ -160,7 +160,7 @@ async def get_background_job(
 ):
     """Get background check job status and flag-only results."""
     
-    job = db.query(BackgroundJob).filter(BackgroundJob.id == job_id).first()
+    job = db.get(BackgroundJob, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     
@@ -179,7 +179,7 @@ async def get_background_job(
 
 
 @router.post("/check-types")
-async def get_available_check_types(_: bool = Depends(require_bearer), __: bool = Depends(require_partner)):
+async def get_available_check_types(_: bool = Depends(require_bearer), __: bool = Depends(require_partner)) -> Dict[str, Any]:
     """Get available background check types."""
     
     return {

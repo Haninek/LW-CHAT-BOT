@@ -58,7 +58,7 @@ async def send_for_signature(
     if getattr(request.state, "idem_cached", None):
         return request.state.idem_cached
     
-    deal = db.query(Deal).filter(Deal.id == deal_id).first()
+    deal = db.get(Deal, deal_id)
     if not deal:
         raise HTTPException(status_code=404, detail="Deal not found")
     
