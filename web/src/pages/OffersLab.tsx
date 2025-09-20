@@ -91,46 +91,58 @@ export default function OffersLab() {
       }
     } catch (error) {
       console.error('Failed to generate offers:', error)
-      // Show demo cash advance offers for UI purposes
+      // Show demo cash advance offers for UI purposes matching real CA structure
       setGeneratedOffers([
         {
           id: 'cash-advance-1',
+          tier: 1,
           type: 'Cash Advance',
-          amount: 85000,
-          factor: 1.12,
-          fee: 10200,
-          payback_amount: 95200,
-          term_days: 180,
-          daily_payment: 529,
-          qualification_score: 88,
-          advantages: ['Fast funding', 'No fixed monthly payments', 'Based on daily sales'],
-          requirements: ['Min 6 months in business', 'Min $50k monthly revenue']
+          amount: 68000,
+          factor: 0.8,  // Revenue factor (80% of monthly revenue)
+          fee: 1.12,    // Fee multiplier (12% fee)
+          payback_amount: 76160,
+          term_days: 120,
+          daily_payment: 634,
+          risk_score: 0.3,
+          underwriting_decision: 'approved',
+          terms_compliant: true,
+          qualification_score: 85,
+          rationale: 'Demo cash advance - Tier 1',
+          advantages: ['Fast funding', 'Revenue-based repayment', 'No fixed monthly payments']
         },
         {
           id: 'cash-advance-2',
+          tier: 2,
           type: 'Cash Advance',
-          amount: 65000,
-          factor: 1.15,
-          fee: 9750,
-          payback_amount: 74750,
+          amount: 85000,
+          factor: 1.0,  // 100% of monthly revenue
+          fee: 1.15,    // 15% fee
+          payback_amount: 97750,
           term_days: 150,
-          daily_payment: 498,
+          daily_payment: 652,
+          risk_score: 0.3,
+          underwriting_decision: 'approved',
+          terms_compliant: true,
           qualification_score: 82,
-          advantages: ['Shorter term', 'Quick approval', 'Flexible payments'],
-          requirements: ['Min 4 months in business', 'Good cash flow']
+          rationale: 'Demo cash advance - Tier 2',
+          advantages: ['Higher amount', 'Revenue-based repayment', 'Flexible terms']
         },
         {
           id: 'cash-advance-3',
+          tier: 3,
           type: 'Cash Advance',
-          amount: 45000,
-          factor: 1.18,
-          fee: 8100,
-          payback_amount: 53100,
-          term_days: 120,
-          daily_payment: 443,
+          amount: 102000,
+          factor: 1.2,  // 120% of monthly revenue
+          fee: 1.18,    // 18% fee
+          payback_amount: 120360,
+          term_days: 180,
+          daily_payment: 669,
+          risk_score: 0.3,
+          underwriting_decision: 'approved',
+          terms_compliant: true,
           qualification_score: 75,
-          advantages: ['Quick access', 'Short commitment', 'Revenue-based payments'],
-          requirements: ['Min 3 months in business', 'Consistent daily sales']
+          rationale: 'Demo cash advance - Tier 3',
+          advantages: ['Maximum funding', 'Longer term', 'Revenue-based repayment']
         }
       ])
     } finally {
@@ -429,30 +441,38 @@ export default function OffersLab() {
                       className="border border-slate-200 rounded-xl p-5 hover:shadow-md transition-all duration-200"
                     >
                       <div className="flex items-center justify-between mb-4">
-                        <h4 className="text-lg font-semibold text-slate-900">{offer.type}</h4>
+                        <h4 className="text-lg font-semibold text-slate-900">
+                          {offer.type} - Tier {offer.tier}
+                        </h4>
                         <div className={`px-3 py-1 rounded-full text-sm font-medium border ${getQualificationColor(offer.qualification_score)}`}>
-                          {offer.qualification_score}% Match
+                          {offer.qualification_score}% Qualified
                         </div>
                       </div>
 
                       <div className="grid grid-cols-2 gap-4 mb-4">
                         <div>
-                          <p className="text-sm text-slate-600">Loan Amount</p>
+                          <p className="text-sm text-slate-600">Cash Advance</p>
                           <p className="text-xl font-bold text-slate-900">{formatCurrency(offer.amount)}</p>
                         </div>
                         <div>
-                          <p className="text-sm text-slate-600">Interest Rate</p>
-                          <p className="text-xl font-bold text-slate-900">{offer.rate}%</p>
+                          <p className="text-sm text-slate-600">Fee Rate</p>
+                          <p className="text-xl font-bold text-slate-900">{(offer.fee * 100).toFixed(1)}%</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-slate-600">Payback Amount</p>
+                          <p className="text-xl font-bold text-slate-900">{formatCurrency(offer.payback_amount)}</p>
                         </div>
                         <div>
                           <p className="text-sm text-slate-600">Term</p>
-                          <p className="text-xl font-bold text-slate-900">{offer.term} months</p>
+                          <p className="text-xl font-bold text-slate-900">{offer.term_days} days</p>
                         </div>
                         <div>
-                          <p className="text-sm text-slate-600">Monthly Payment</p>
-                          <p className="text-xl font-bold text-slate-900">
-                            {offer.monthly_payment > 0 ? formatCurrency(offer.monthly_payment) : 'Flexible'}
-                          </p>
+                          <p className="text-sm text-slate-600">Daily Payment</p>
+                          <p className="text-xl font-bold text-slate-900">{formatCurrency(offer.daily_payment)}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-slate-600">Revenue Factor</p>
+                          <p className="text-xl font-bold text-slate-900">{(offer.factor * 100).toFixed(0)}%</p>
                         </div>
                       </div>
 
@@ -470,21 +490,51 @@ export default function OffersLab() {
                         </div>
                         
                         <div>
-                          <p className="text-sm font-medium text-slate-700 mb-2">Requirements:</p>
-                          <ul className="space-y-1">
-                            {offer.requirements?.map((requirement: string, index: number) => (
-                              <li key={index} className="text-sm text-slate-600 flex items-center">
-                                <AlertCircle className="w-4 h-4 text-blue-500 mr-2 flex-shrink-0" />
-                                {requirement}
-                              </li>
-                            ))}
-                          </ul>
+                          <p className="text-sm font-medium text-slate-700 mb-2">Underwriting Details:</p>
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div className="flex justify-between">
+                              <span className="text-slate-600">Risk Score:</span>
+                              <span className="font-medium text-slate-900">{(offer.risk_score * 100).toFixed(0)}%</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-600">Decision:</span>
+                              <span className={`font-medium capitalize ${
+                                offer.underwriting_decision === 'approved' ? 'text-green-600' : 'text-yellow-600'
+                              }`}>
+                                {offer.underwriting_decision?.replace('_', ' ')}
+                              </span>
+                            </div>
+                            {offer.expected_margin && (
+                              <div className="flex justify-between">
+                                <span className="text-slate-600">Expected Margin:</span>
+                                <span className="font-medium text-slate-900">{formatCurrency(offer.expected_margin)}</span>
+                              </div>
+                            )}
+                            <div className="flex justify-between">
+                              <span className="text-slate-600">Compliance:</span>
+                              <span className={`font-medium ${
+                                offer.terms_compliant ? 'text-green-600' : 'text-red-600'
+                              }`}>
+                                {offer.terms_compliant ? 'Compliant' : 'Issues Found'}
+                              </span>
+                            </div>
+                          </div>
+                          {offer.rationale && (
+                            <div className="mt-3 p-3 bg-blue-50 rounded-lg">
+                              <p className="text-sm text-blue-800">{offer.rationale}</p>
+                            </div>
+                          )}
                         </div>
                       </div>
 
-                      <button className="w-full mt-4 py-2 px-4 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-lg font-medium transition-all duration-200">
-                        Apply for this Offer
-                      </button>
+                      <div className="flex gap-3 mt-4">
+                        <button className="flex-1 py-2 px-4 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white rounded-lg font-medium transition-all duration-200">
+                          Accept Offer
+                        </button>
+                        <button className="flex-1 py-2 px-4 border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-lg font-medium transition-all duration-200">
+                          View Details
+                        </button>
+                      </div>
                     </motion.div>
                   ))}
                 </div>

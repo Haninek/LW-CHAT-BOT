@@ -93,9 +93,9 @@ class ApiClient {
 
   // Offers
   async generateOffers(metrics: any, overrides?: any) {
-    return this.request('/api/offers', {
+    return this.request('/api/offers/simple', {
       method: 'POST',
-      body: JSON.stringify({ ...metrics, overrides }),
+      body: JSON.stringify({ metrics, overrides }),
     })
   }
 

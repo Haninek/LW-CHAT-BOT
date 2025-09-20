@@ -36,6 +36,141 @@ class GenerateOffersRequest(BaseModel):
     overrides: Optional[OfferOverrides] = None
 
 
+class SimpleOfferRequest(BaseModel):
+    metrics: Dict[str, Any]
+    overrides: Optional[OfferOverrides] = None
+
+@router.post("/simple")
+async def generate_simple_offers(
+    request: SimpleOfferRequest
+) -> Dict[str, Any]:
+    """Generate cash advance offers directly from metrics without requiring deal_id."""
+    
+    # Extract metrics
+    metrics = request.metrics
+    revenue = metrics.get("avg_monthly_revenue", 0.0)
+    balance = metrics.get("avg_daily_balance_3m", 0.0) 
+    nsf_count = metrics.get("total_nsf_3m", 0)
+    negative_days = metrics.get("total_days_negative_3m", 0)
+    
+    # Ensure we have minimum revenue for calculations
+    if revenue <= 0:
+        return {"error": "Revenue data required for offer generation"}
+    
+    # Run underwriting guardrails validation
+    from services.underwriting import underwriting_guardrails, UnderwritingDecision
+    underwriting_result = underwriting_guardrails.evaluate_metrics(metrics, "CA")
+    
+    # Check if deal should be declined
+    if underwriting_result.decision == UnderwritingDecision.DECLINED:
+        return {
+            "offers": [],
+            "underwriting_decision": "declined",
+            "decline_reasons": underwriting_result.reasons,
+            "violations": [
+                {
+                    "rule_id": v.rule_id,
+                    "description": v.description,
+                    "severity": v.severity.value,
+                    "actual_value": v.actual_value,
+                    "threshold_value": v.threshold_value
+                }
+                for v in underwriting_result.violations
+            ],
+            "risk_score": underwriting_result.risk_score
+        }
+    
+    # Risk scoring (simplified)
+    risk_score = underwriting_result.risk_score
+    
+    # Default cash advance tiers (max 200 days)
+    default_tiers = [
+        {"factor": 0.8, "fee": 1.12, "term_days": 120, "buy_rate": 1.08, "product_type": "Cash Advance"},
+        {"factor": 1.0, "fee": 1.15, "term_days": 150, "buy_rate": 1.11, "product_type": "Cash Advance"}, 
+        {"factor": 1.2, "fee": 1.18, "term_days": 180, "buy_rate": 1.14, "product_type": "Cash Advance"}
+    ]
+    
+    tiers = request.overrides.tiers if request.overrides and request.overrides.tiers else default_tiers
+    offers = []
+    
+    for i, tier in enumerate(tiers[:3]):  # Max 3 offers
+        # Calculate offer amount
+        base_amount = revenue * tier["factor"]
+        
+        # Apply underwriting max offer amount limit
+        if underwriting_result.max_offer_amount:
+            base_amount = min(base_amount, underwriting_result.max_offer_amount)
+        
+        # Apply risk adjustment
+        adjusted_amount = base_amount * (1 - risk_score * 0.3)
+        
+        # Round to nearest $100
+        offer_amount = math.floor(adjusted_amount / 100) * 100
+        
+        # Calculate payback
+        payback_amount = offer_amount * tier["fee"]
+        
+        # Calculate expected margin if buy_rate provided
+        expected_margin = None
+        if tier.get("buy_rate"):
+            expected_margin = (tier["fee"] - tier["buy_rate"]) * offer_amount
+        
+        # Validate deal terms for compliance
+        terms_valid, term_issues = underwriting_guardrails.validate_deal_terms(
+            deal_amount=offer_amount,
+            fee_rate=tier["fee"],
+            term_days=tier["term_days"],
+            monthly_revenue=float(revenue),
+            state="CA"
+        )
+        
+        offer = {
+            "id": str(uuid.uuid4()),
+            "tier": i + 1,
+            "type": tier.get("product_type", "Cash Advance"),
+            "amount": int(offer_amount),
+            "factor": tier["factor"],
+            "fee": tier["fee"],
+            "payback_amount": int(payback_amount),
+            "term_days": min(tier["term_days"], 200),  # Enforce max 200 days
+            "buy_rate": tier.get("buy_rate"),
+            "expected_margin": int(expected_margin) if expected_margin else None,
+            "daily_payment": int(payback_amount / min(tier["term_days"], 200)),
+            "risk_score": round(risk_score, 2),
+            "underwriting_decision": underwriting_result.decision.value,
+            "terms_compliant": terms_valid,
+            "compliance_issues": term_issues,
+            "rationale": f"Cash advance based on ${int(float(revenue)):,}/month revenue, {min(tier['term_days'], 200)}-day term",
+            "advantages": ["Fast funding", "Revenue-based repayment", "No fixed monthly payments"],
+            "qualification_score": max(50, int(100 - (risk_score * 50)))
+        }
+        
+        offers.append(offer)
+    
+    return {
+        "success": True,
+        "data": {
+            "offers": offers,
+            "underwriting_decision": underwriting_result.decision.value,
+            "underwriting_summary": {
+                "approved": underwriting_result.decision == UnderwritingDecision.APPROVED,
+                "risk_score": underwriting_result.risk_score,
+                "ca_compliant": underwriting_result.ca_compliant,
+                "max_offer_amount": underwriting_result.max_offer_amount,
+                "violation_count": len(underwriting_result.violations),
+                "reasons": underwriting_result.reasons
+            },
+            "metrics_used": {
+                "avg_monthly_revenue": revenue,
+                "avg_daily_balance_3m": balance,
+                "total_nsf_3m": nsf_count,
+                "total_days_negative_3m": negative_days,
+                "underwriting_risk_score": underwriting_result.risk_score
+            }
+        }
+    }
+
+
 @router.post("/", dependencies=[Depends(capture_body)])
 async def generate_offers(
     req: Request,
