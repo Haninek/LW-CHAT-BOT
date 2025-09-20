@@ -1,15 +1,17 @@
 """Deal management endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from __future__ import annotations
+from typing import Any, Dict, List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Request, Header, Query, Body
 from sqlalchemy.orm import Session
+from core.database import get_db
+from core.idempotency import capture_body, require_idempotency, store_idempotent
+from core.auth import require_bearer, require_partner
+
+# Existing specific imports
 from pydantic import BaseModel
-from typing import Optional
 import uuid
 from datetime import datetime
-
-from core.database import get_db
-from core.auth import require_bearer
-from core.idempotency import capture_body, require_idempotency, store_idempotent
 from models.deal import Deal
 from models.merchant import Merchant
 from models.document import Document
@@ -33,14 +35,14 @@ async def start_deal(
     db: Session = Depends(get_db),
     tenant_id=Depends(require_idempotency),
     _: bool = Depends(require_bearer)
-):
+) -> Dict[str, Any]:
     """Start a deal for a merchant - reuse existing open deal if available."""
     
     if getattr(req.state, "idem_cached", None):
         return req.state.idem_cached
     
     # Verify merchant exists
-    merchant = db.query(Merchant).filter(Merchant.id == request.merchant_id).first()
+    merchant = db.get(Merchant, request.merchant_id)
     if not merchant:
         raise HTTPException(status_code=404, detail="Merchant not found")
     
@@ -94,10 +96,10 @@ async def get_deal(
     deal_id: str,
     db: Session = Depends(get_db),
     _: bool = Depends(require_bearer)
-):
+) -> Dict[str, Any]:
     """Get deal details."""
     
-    deal = db.query(Deal).filter(Deal.id == deal_id).first()
+    deal = db.get(Deal, deal_id)
     if not deal:
         raise HTTPException(status_code=404, detail="Deal not found")
     
@@ -115,7 +117,7 @@ async def get_merchant_deals(
     merchant_id: str,
     db: Session = Depends(get_db),
     _: bool = Depends(require_bearer)
-):
+) -> List[Dict[str, Any]]:
     """Get all deals for a merchant."""
     
     deals = db.query(Deal).filter(Deal.merchant_id == merchant_id).order_by(Deal.created_at.desc()).all()
@@ -137,11 +139,11 @@ async def recompute_deal_metrics(
     deal_id: str,
     db: Session = Depends(get_db),
     _: bool = Depends(require_bearer)
-):
+) -> Dict[str, Any]:
     """Calculate and store financial metrics for a deal based on uploaded documents."""
     
     # Verify deal exists
-    deal = db.query(Deal).filter(Deal.id == deal_id).first()
+    deal = db.get(Deal, deal_id)
     if not deal:
         raise HTTPException(status_code=404, detail="Deal not found")
     
