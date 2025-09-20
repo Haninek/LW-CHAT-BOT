@@ -84,40 +84,46 @@ export default function OffersLab() {
       }
     } catch (error) {
       console.error('Failed to generate offers:', error)
-      // Show demo offers for UI purposes
+      // Show demo cash advance offers for UI purposes
       setGeneratedOffers([
         {
-          id: 'term-loan-1',
-          type: 'Term Loan',
-          amount: 75000,
-          rate: 8.5,
-          term: 24,
-          monthly_payment: 3421,
-          qualification_score: 85,
-          advantages: ['Fixed monthly payments', 'No collateral required', 'Fast approval'],
-          requirements: ['Min 6 months in business', 'Min $10k monthly revenue']
+          id: 'cash-advance-1',
+          type: 'Cash Advance',
+          amount: 85000,
+          factor: 1.12,
+          fee: 10200,
+          payback_amount: 95200,
+          term_days: 180,
+          daily_payment: 529,
+          qualification_score: 88,
+          advantages: ['Fast funding', 'No fixed monthly payments', 'Based on daily sales'],
+          requirements: ['Min 6 months in business', 'Min $50k monthly revenue']
         },
         {
-          id: 'line-of-credit-1',
-          type: 'Line of Credit',
-          amount: 50000,
-          rate: 12.5,
-          term: 12,
-          monthly_payment: 0,
-          qualification_score: 78,
-          advantages: ['Pay only when you use it', 'Flexible repayment', 'Revolving credit'],
-          requirements: ['Min 12 months in business', 'Good credit score']
+          id: 'cash-advance-2',
+          type: 'Cash Advance',
+          amount: 65000,
+          factor: 1.15,
+          fee: 9750,
+          payback_amount: 74750,
+          term_days: 150,
+          daily_payment: 498,
+          qualification_score: 82,
+          advantages: ['Shorter term', 'Quick approval', 'Flexible payments'],
+          requirements: ['Min 4 months in business', 'Good cash flow']
         },
         {
-          id: 'sba-loan-1',
-          type: 'SBA Loan',
-          amount: 150000,
-          rate: 6.5,
-          term: 60,
-          monthly_payment: 2938,
-          qualification_score: 92,
-          advantages: ['Lower interest rates', 'Longer repayment terms', 'SBA guaranteed'],
-          requirements: ['Strong credit history', 'Detailed business plan', 'Collateral required']
+          id: 'cash-advance-3',
+          type: 'Cash Advance',
+          amount: 45000,
+          factor: 1.18,
+          fee: 8100,
+          payback_amount: 53100,
+          term_days: 120,
+          daily_payment: 443,
+          qualification_score: 75,
+          advantages: ['Quick access', 'Short commitment', 'Revenue-based payments'],
+          requirements: ['Min 3 months in business', 'Consistent daily sales']
         }
       ])
     } finally {

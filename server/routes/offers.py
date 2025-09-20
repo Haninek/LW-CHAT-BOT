@@ -147,11 +147,11 @@ async def generate_offers(
     
     risk_score = min(risk_score, 1.0)
     
-    # Default tiers if no overrides
+    # Default cash advance tiers (max 200 days)
     default_tiers = [
-        {"factor": 0.8, "fee": 1.15, "term_days": 90, "buy_rate": 1.12},
-        {"factor": 1.0, "fee": 1.20, "term_days": 120, "buy_rate": 1.16}, 
-        {"factor": 1.2, "fee": 1.25, "term_days": 150, "buy_rate": 1.20}
+        {"factor": 0.8, "fee": 1.12, "term_days": 120, "buy_rate": 1.08, "product_type": "Cash Advance"},
+        {"factor": 1.0, "fee": 1.15, "term_days": 150, "buy_rate": 1.11, "product_type": "Cash Advance"}, 
+        {"factor": 1.2, "fee": 1.18, "term_days": 180, "buy_rate": 1.14, "product_type": "Cash Advance"}
     ]
     
     tiers = request.overrides.tiers if request.overrides and request.overrides.tiers else default_tiers
@@ -192,19 +192,22 @@ async def generate_offers(
         offer = {
             "id": str(uuid.uuid4()),
             "tier": i + 1,
+            "type": tier.get("product_type", "Cash Advance"),
             "amount": int(offer_amount),
             "factor": tier["factor"],
             "fee": tier["fee"],
             "payback_amount": int(payback_amount),
-            "term_days": tier["term_days"],
+            "term_days": min(tier["term_days"], 200),  # Enforce max 200 days
             "buy_rate": tier.get("buy_rate"),
             "expected_margin": int(expected_margin) if expected_margin else None,
-            "daily_payment": int(payback_amount / tier["term_days"]),
+            "daily_payment": int(payback_amount / min(tier["term_days"], 200)),
             "risk_score": round(underwriting_risk, 2),
             "underwriting_decision": underwriting_result.decision.value,
             "terms_compliant": terms_valid,
             "compliance_issues": term_issues,
-            "rationale": f"Based on ${int(float(revenue)):,}/month revenue, {tier['term_days']}-day term"
+            "rationale": f"Cash advance based on ${int(float(revenue)):,}/month revenue, {min(tier['term_days'], 200)}-day term",
+            "advantages": ["Fast funding", "Revenue-based repayment", "No fixed monthly payments"],
+            "qualification_score": max(50, int(100 - (underwriting_risk * 50)))
         }
         
         offers.append(offer)
