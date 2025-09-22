@@ -292,7 +292,7 @@ export default function OffersLab() {
     setGenerating(true)
     try {
       // Use monthly rows data if available, otherwise fall back to CSV or defaults
-    const overrides = monthlyRows.length ? computeOfferOverridesFromMonthly(monthlyRows) : 
+    const overrides = monthlyRows.length ? computeOfferOverrides(monthlyRows) : 
                      csvRows.length ? computeOfferOverrides(csvRows) : offerOverrides
       const response = await apiClient.generateOffers(metricsToUse, overrides)
       if (response.success && response.data?.offers) {
