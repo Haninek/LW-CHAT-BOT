@@ -15,7 +15,17 @@ except Exception:
 TTL = 3600
 
 async def capture_body(request: Request):
-    request.state._body_cache = await request.body()
+    """
+    Middleware to capture the request body for idempotency checks.
+    Skip body capture for file uploads to avoid 'Stream consumed' errors.
+    """
+    if not hasattr(request.state, '_body_cache'):
+        content_type = request.headers.get('content-type', '')
+        if content_type.startswith('multipart/form-data'):
+            # For file uploads, skip body caching as stream will be consumed by File() dependency
+            request.state._body_cache = b'FILE_UPLOAD'
+        else:
+            request.state._body_cache = await request.body()
 
 def _key(tenant_id: str, path: str, idem: str, body: bytes) -> str:
     h = hashlib.sha256(body or b"").hexdigest()
