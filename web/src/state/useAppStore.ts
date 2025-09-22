@@ -115,12 +115,12 @@ interface AppState {
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
-      // API Configuration - Force refresh for cache bust
+      // API Configuration - Use backend on port 8000
       apiConfig: {
-        baseUrl: 'https://c7e81ded-fce0-4303-b769-994a11bdbe33-00-1a1emwuwnmcai.janeway.replit.dev:8000',
+        baseUrl: 'http://localhost:8000',
         apiKey: defaultApiKey,
         idempotencyEnabled: true,
-        timestamp: '2025-09-22-17:31' // Force cache refresh
+        timestamp: '2025-09-22-17:36' // Force cache refresh
       },
       setApiConfig: (config) => set((state) => ({
         apiConfig: { ...state.apiConfig, ...config }
