@@ -37,7 +37,9 @@ async def require_idempotency(
     tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
 ):
     if not idempotency_key: raise HTTPException(400, "Missing Idempotency-Key")
-    if not tenant_id: raise HTTPException(400, "Missing X-Tenant-ID")
+    # Use default tenant for super admin access if not provided
+    if not tenant_id: 
+        tenant_id = "default-tenant"
     request.state.tenant_id = tenant_id
     key = _key(tenant_id, request.url.path, idempotency_key, getattr(request.state, "_body_cache", b""))
 
