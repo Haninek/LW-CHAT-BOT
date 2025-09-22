@@ -82,3 +82,5 @@ export type RuleEngineResult = {
   matched: Rule | null;
   actions: Action[];
 };
+
+export * from './analysis';
