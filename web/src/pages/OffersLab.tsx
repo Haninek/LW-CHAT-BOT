@@ -221,7 +221,7 @@ export default function OffersLab() {
         dealId,
         files: selectedFiles
       })
-      if (uploadResult?.metrics) {
+      if (uploadResult && 'metrics' in uploadResult && uploadResult.metrics) {
         setCurrentMetrics(uploadResult.metrics)
       }
 
@@ -230,7 +230,7 @@ export default function OffersLab() {
         dealId
       })
 
-      if (parseResult?.metrics) {
+      if (parseResult && 'metrics' in parseResult && parseResult.metrics) {
         setCurrentMetrics(parseResult.metrics)
         setError(null)
         
@@ -251,8 +251,10 @@ export default function OffersLab() {
         setLoadingTransactions(true)
         try {
           const transactionResponse = await apiClient.getTransactions(dealId)
-          if (transactionResponse.success && transactionResponse.data?.transactions) {
-            setTransactions(transactionResponse.data.transactions)
+          if (transactionResponse.success && transactionResponse.data && 
+              typeof transactionResponse.data === 'object' && 
+              'transactions' in transactionResponse.data) {
+            setTransactions((transactionResponse.data as any).transactions)
           }
         } catch (error) {
           console.warn('Could not fetch transactions:', error)
@@ -260,7 +262,7 @@ export default function OffersLab() {
           setLoadingTransactions(false)
         }
         
-        await handleGenerateOffers(parseResult.metrics)
+        await handleGenerateOffers((parseResult as any).metrics)
       }
     } catch (error: any) {
       console.error('Failed to parse statements:', error)
