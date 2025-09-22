@@ -297,6 +297,18 @@ class ApiClient {
       return { success: true, data: rules, timestamp: new Date().toISOString() }
     }
   }
+
+  // Monthly statement analysis
+  async getMonthlyRows(dealId: string) {
+    const endpoint = `/api/statements/monthly?deal_id=${encodeURIComponent(dealId)}`
+    return this.request<{ ok: boolean; rows: any[] }>(endpoint)
+  }
+
+  getMonthlyCsvUrl(dealId: string) {
+    const cfg = this.getConfig()
+    const base = cfg.baseUrl || ''
+    return `${base}/api/statements/monthly.csv?deal_id=${encodeURIComponent(dealId)}`
+  }
 }
 
 export const apiClient = new ApiClient()

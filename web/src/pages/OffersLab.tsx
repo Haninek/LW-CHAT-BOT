@@ -4,6 +4,7 @@ import { Upload, FileText, DollarSign, Calculator, Download, Zap, TrendingUp, Al
 import { useDropzone } from 'react-dropzone'
 import MonthlySummary from '@/components/analysis/MonthlySummary'
 import CsvTable from '@/components/analysis/CsvTable'
+import { DynamicCsvTable } from '@/components/analysis/DynamicCsvTable'
 import { readCsvFile, parseCsv, coerceMonthlyRows } from '@/lib/csv'
 import type { MonthlyCsvRow } from '@/types/analysis'
 import { useAppStore } from '../state/useAppStore'
@@ -83,6 +84,8 @@ export default function OffersLab() {
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
   const [generatedOffers, setGeneratedOffers] = useState<any[]>([])
   const [csvRows, setCsvRows] = useState<MonthlyCsvRow[]>([])
+  const [monthlyRows, setMonthlyRows] = useState<MonthlyCsvRow[]>([])
+  const [loadingMonthly, setLoadingMonthly] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [merchantInfo, setMerchantInfo] = useState<MerchantSummary | null>(null)
@@ -224,6 +227,20 @@ export default function OffersLab() {
       if (parseResult?.metrics) {
         setCurrentMetrics(parseResult.metrics)
         setError(null)
+        
+        // Fetch monthly rows for analysis
+        setLoadingMonthly(true)
+        try {
+          const r = await apiClient.getMonthlyRows(dealId)
+          if (r?.success && (r.data as any)?.rows) {
+            setMonthlyRows((r.data as any).rows as MonthlyCsvRow[])
+          }
+        } catch (error) {
+          console.warn('Could not fetch monthly rows:', error)
+        } finally {
+          setLoadingMonthly(false)
+        }
+        
         await handleGenerateOffers(parseResult.metrics)
       }
     } catch (error: any) {
@@ -274,7 +291,9 @@ export default function OffersLab() {
 
     setGenerating(true)
     try {
-      const overrides = csvRows.length ? computeOfferOverrides(csvRows) : offerOverrides
+      // Use monthly rows data if available, otherwise fall back to CSV or defaults
+    const overrides = monthlyRows.length ? computeOfferOverridesFromMonthly(monthlyRows) : 
+                     csvRows.length ? computeOfferOverrides(csvRows) : offerOverrides
       const response = await apiClient.generateOffers(metricsToUse, overrides)
       if (response.success && response.data?.offers) {
         setGeneratedOffers(response.data.offers)
@@ -666,6 +685,37 @@ export default function OffersLab() {
                   </div>
                 </div>
 
+              </motion.div>
+            )}
+
+            {/* Monthly Analysis Section */}
+            {!loadingMonthly && monthlyRows.length > 0 && dealInfo?.id && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/50"
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-slate-900">Monthly Analysis</h3>
+                  <a
+                    href={apiClient.getMonthlyCsvUrl(dealInfo.id)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm px-3 py-1.5 rounded-md border bg-slate-50 hover:bg-slate-100 flex items-center gap-2"
+                  >
+                    <Download className="w-4 h-4" />
+                    Download CSV
+                  </a>
+                </div>
+
+                {loadingMonthly && <div className="text-sm text-slate-500 mt-2">Loading monthly analysis…</div>}
+
+                <MonthlySummary rows={monthlyRows} />
+                <div className="mt-6">
+                  <DynamicCsvTable rowsRaw={
+                    monthlyRows.map(r => Object.fromEntries(Object.entries(r).map(([k,v]) => [k, String(v ?? '')])))
+                  } />
+                </div>
               </motion.div>
             )}
 
