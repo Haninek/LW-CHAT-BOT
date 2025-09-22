@@ -26,7 +26,16 @@ const getEnvValue = (key: string): string | undefined => {
   return undefined
 }
 
-const defaultBaseUrl = getEnvValue('VITE_API_BASE') || 'http://localhost:8000'
+// Use Replit domain for API calls in cloud environment
+const getApiBaseUrl = () => {
+  const replitDomain = getEnvValue('REPLIT_DEV_DOMAIN') || getEnvValue('REPLIT_DOMAINS')
+  if (replitDomain) {
+    return `https://${replitDomain.split(',')[0]}:8000`
+  }
+  return getEnvValue('VITE_API_BASE') || 'http://localhost:8000'
+}
+
+const defaultBaseUrl = getApiBaseUrl()
 const defaultApiKey = getEnvValue('VITE_API_KEY') || ''
 
 export type ChatMessage = {
