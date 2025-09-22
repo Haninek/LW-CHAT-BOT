@@ -58,23 +58,27 @@ async def parse_statements(
     file_contents = []
     filenames = []
     for doc in documents:
-        if doc.file_data:
+        # Check if document has file_data
+        if hasattr(doc, 'file_data') and doc.file_data is not None:
             file_contents.append(bytes(doc.file_data))
-            filenames.append(doc.filename or f"statement-{len(file_contents)}.pdf")
+            filenames.append(getattr(doc, 'filename', None) or f"statement-{len(file_contents)}.pdf")
             continue
 
-        if not doc.storage_key:
+        # Check if document has storage_key
+        storage_key = getattr(doc, 'storage_key', None)
+        if not storage_key:
             raise HTTPException(500, f"Document {doc.id} is missing stored content")
 
-        path = pathlib.Path(doc.storage_key)
+        path = pathlib.Path(storage_key)
         if not path.exists():
             raise HTTPException(500, f"Stored document {path} not found on disk")
 
         try:
             file_contents.append(path.read_bytes())
-            filenames.append(doc.filename or path.name)
+            filenames.append(getattr(doc, 'filename', None) or path.name)
         except Exception as exc:
-            raise HTTPException(500, f"Unable to read document {doc.filename or doc.id}: {exc}")
+            doc_filename = getattr(doc, 'filename', None)
+            raise HTTPException(500, f"Unable to read document {doc_filename or doc.id}: {exc}")
 
     analyzer = BankStatementAnalyzer()
 

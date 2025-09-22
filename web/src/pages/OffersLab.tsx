@@ -194,7 +194,7 @@ export default function OffersLab() {
     accept: {
       'application/pdf': ['.pdf'],
     },
-    minFiles: 3,
+    // minFiles: 3, // Not a valid dropzone option
     maxFiles: 12,
     multiple: true
   })

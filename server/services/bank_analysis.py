@@ -248,7 +248,11 @@ class BankStatementAnalyzer:
                 response_format={"type": "json_object"}
             )
             
-            gpt_insights = json.loads(response.choices[0].message.content)
+            gpt_content = response.choices[0].message.content
+            if gpt_content:
+                gpt_insights = json.loads(gpt_content)
+            else:
+                gpt_insights = {}
             
             # Merge GPT insights with calculated metrics and include transactions
             return self._finalize_analysis_with_transactions(basic_metrics, extracted_data, gpt_insights, all_transactions, gpt_enhanced=True)
@@ -267,7 +271,7 @@ class BankStatementAnalyzer:
                         "endingBalance": transaction.get("balance"),
                         "categoryHint": transaction.get("categoryHint")
                     })
-            return self._finalize_analysis_with_transactions(basic_metrics, extracted_data, None, all_transactions, gpt_enhanced=False)
+            return self._finalize_analysis_with_transactions(basic_metrics, extracted_data, {}, all_transactions, gpt_enhanced=False)
     
     def _build_gpt_context(self, extracted_data: Dict[str, Any], basic_metrics: Dict[str, Any]) -> str:
         """Build context for GPT analysis."""
@@ -376,7 +380,7 @@ class BankStatementAnalyzer:
         """
     
     def _finalize_analysis_with_transactions(self, basic_metrics: Dict[str, Any], extracted_data: Dict[str, Any], 
-                          gpt_insights: Dict[str, Any] = None, transactions: list = None, gpt_enhanced: bool = False) -> Dict[str, Any]:
+                          gpt_insights: Dict[str, Any] = None, transactions: List[Dict[str, Any]] = None, gpt_enhanced: bool = False) -> Dict[str, Any]:
         """Finalize the comprehensive analysis with all metrics, insights, and transaction details."""
         
         months = extracted_data["total_months"]
