@@ -214,17 +214,31 @@ class BankStatementAnalyzer:
         }
     
     def _enhance_with_gpt(self, extracted_data: Dict[str, Any], basic_metrics: Dict[str, Any]) -> Dict[str, Any]:
-        """Use GPT-5 to enhance analysis with business insights and risk assessment."""
+        """Use GPT-5 to enhance analysis with business insights and parse individual transactions."""
         try:
-            # Prepare context for GPT
-            context = self._build_gpt_context(extracted_data, basic_metrics)
+            # Extract all transactions for detailed analysis
+            all_transactions = []
+            for statement in extracted_data["statements"]:
+                for transaction in statement.get("transactions", []):
+                    # Convert to required format
+                    all_transactions.append({
+                        "date": transaction.get("date", "2024-01-01"),
+                        "description": transaction.get("description", ""),
+                        "amount": abs(float(transaction.get("amount", 0))),
+                        "type": "credit" if float(transaction.get("amount", 0)) > 0 else "debit",
+                        "endingBalance": transaction.get("balance"),
+                        "categoryHint": transaction.get("categoryHint")
+                    })
+            
+            # Prepare context for GPT with transaction parsing focus
+            context = self._build_gpt_context_with_transactions(extracted_data, basic_metrics, all_transactions)
             
             response = self.client.chat.completions.create(
-                model="gpt-5",
+                model="gpt-4o",
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are a financial analyst specializing in business lending risk assessment. Analyze bank statement data and provide business insights, risk assessment, and cash flow patterns in JSON format."
+                        "content": "You are a financial analyst specializing in business lending risk assessment and bank statement transaction parsing. Analyze bank statement data, parse transactions accurately, and provide business insights in JSON format."
                     },
                     {
                         "role": "user",
@@ -236,12 +250,24 @@ class BankStatementAnalyzer:
             
             gpt_insights = json.loads(response.choices[0].message.content)
             
-            # Merge GPT insights with calculated metrics
-            return self._finalize_analysis(basic_metrics, extracted_data, gpt_insights, gpt_enhanced=True)
+            # Merge GPT insights with calculated metrics and include transactions
+            return self._finalize_analysis_with_transactions(basic_metrics, extracted_data, gpt_insights, all_transactions, gpt_enhanced=True)
             
         except Exception as e:
             print(f"GPT enhancement failed: {e}")
-            return self._finalize_analysis(basic_metrics, extracted_data, gpt_enhanced=False)
+            # Still extract transactions for fallback
+            all_transactions = []
+            for statement in extracted_data["statements"]:
+                for transaction in statement.get("transactions", []):
+                    all_transactions.append({
+                        "date": transaction.get("date", "2024-01-01"),
+                        "description": transaction.get("description", ""),
+                        "amount": abs(float(transaction.get("amount", 0))),
+                        "type": "credit" if float(transaction.get("amount", 0)) > 0 else "debit",
+                        "endingBalance": transaction.get("balance"),
+                        "categoryHint": transaction.get("categoryHint")
+                    })
+            return self._finalize_analysis_with_transactions(basic_metrics, extracted_data, None, all_transactions, gpt_enhanced=False)
     
     def _build_gpt_context(self, extracted_data: Dict[str, Any], basic_metrics: Dict[str, Any]) -> str:
         """Build context for GPT analysis."""
@@ -294,7 +320,125 @@ class BankStatementAnalyzer:
             }
         }}
         """
+        
+    def _build_gpt_context_with_transactions(self, extracted_data: Dict[str, Any], basic_metrics: Dict[str, Any], transactions: list) -> str:
+        """Build enhanced context for GPT analysis including transaction details."""
+        statements_summary = []
+        for stmt in extracted_data["statements"]:
+            sample_transactions = stmt.get("transactions", [])[:10]  # First 10 transactions
+            statements_summary.append({
+                "month": stmt["month"],
+                "transaction_count": len(stmt.get("transactions", [])),
+                "nsf_fees": stmt.get("nsf_fees", 0),
+                "days_negative": stmt.get("days_negative", 0),
+                "sample_transactions": [{
+                    "description": t["description"],
+                    "amount": t["amount"],
+                    "balance": t["balance"]
+                } for t in sample_transactions]
+            })
+        
+        return f"""
+        Analyze this bank statement data and provide business insights. Focus on transaction patterns and business cash flow.
+        
+        CALCULATED METRICS:
+        {json.dumps(basic_metrics, indent=2)}
+        
+        STATEMENT DETAILS:
+        {json.dumps(statements_summary, indent=2)}
+        
+        TRANSACTION COUNT: {len(transactions)} transactions parsed
+        
+        Please provide analysis in this JSON format:
+        {{
+            "business_type_indicators": [<array of business type clues>],
+            "cash_flow_patterns": {
+                "seasonality": "<seasonal patterns description>",
+                "trend": "<improving/stable/declining>",
+                "consistency": "<regular/irregular>" 
+            },
+            "risk_assessment": {
+                "risk_level": "<low/medium/high>",
+                "risk_flags": [<specific risk indicators>],
+                "positive_indicators": [<strengths found>]
+            },
+            "lending_recommendation": {
+                "confidence_score": <0-1 float>,
+                "recommended_amount": <suggested loan amount>,
+                "risk_comments": "<brief risk summary>"
+            },
+            "cash_flow_analysis": {
+                "operating_cash_flow": <estimated monthly OCF>,
+                "working_capital_trend": "<improving/stable/declining>",
+                "liquidity_assessment": "<strong/adequate/weak>"
+            }
+        }}
+        """
     
+    def _finalize_analysis_with_transactions(self, basic_metrics: Dict[str, Any], extracted_data: Dict[str, Any], 
+                          gpt_insights: Dict[str, Any] = None, transactions: list = None, gpt_enhanced: bool = False) -> Dict[str, Any]:
+        """Finalize the comprehensive analysis with all metrics, insights, and transaction details."""
+        
+        months = extracted_data["total_months"]
+        
+        # Base analysis from calculated metrics
+        analysis = {
+            "avg_monthly_revenue": basic_metrics["avg_monthly_revenue"],
+            "avg_daily_balance": basic_metrics["avg_daily_balance"],
+            "total_deposits": basic_metrics["total_deposits"],
+            "total_withdrawals": basic_metrics["total_withdrawals"],
+            "total_nsf_fees": basic_metrics["total_nsf_fees"],
+            "total_nsf_count": basic_metrics["total_nsf_count"],
+            "days_negative_balance": basic_metrics["days_negative_balance"],
+            "highest_balance": basic_metrics["highest_balance"],
+            "lowest_balance": basic_metrics["lowest_balance"],
+            "cash_flow_volatility": basic_metrics["cash_flow_volatility"],
+            "deposit_frequency": basic_metrics["deposit_frequency"],
+            "months_analyzed": months,
+            "statements_processed": months,
+            "gpt_analysis": gpt_enhanced,
+            "transactions": transactions or []  # Include parsed transactions
+        }
+        
+        # Add GPT insights if available
+        if gpt_insights:
+            analysis.update({
+                "business_type_indicators": gpt_insights.get("business_type_indicators", []),
+                "cash_flow_patterns": gpt_insights.get("cash_flow_patterns", {}),
+                "risk_assessment": gpt_insights.get("risk_assessment", {}),
+                "lending_recommendation": gpt_insights.get("lending_recommendation", {}),
+                "cash_flow_analysis": gpt_insights.get("cash_flow_analysis", {}),
+                "analysis_confidence": gpt_insights.get("lending_recommendation", {}).get("confidence_score", 0.9)
+            })
+        else:
+            # Provide basic insights without GPT
+            analysis.update({
+                "business_type_indicators": ["Business analysis from transaction patterns"],
+                "cash_flow_patterns": {
+                    "seasonality": "Analysis requires more data",
+                    "trend": "stable" if basic_metrics["cash_flow_volatility"] < 0.4 else "volatile",
+                    "consistency": "regular" if basic_metrics["deposit_frequency"] > 8 else "irregular"
+                },
+                "risk_assessment": {
+                    "risk_level": "medium",
+                    "risk_flags": [],
+                    "positive_indicators": ["Transaction data available for analysis"]
+                },
+                "lending_recommendation": {
+                    "confidence_score": 0.7,
+                    "recommended_amount": basic_metrics["avg_monthly_revenue"] * 6,
+                    "risk_comments": "Standard risk profile based on financial metrics"
+                },
+                "cash_flow_analysis": {
+                    "operating_cash_flow": basic_metrics["avg_monthly_revenue"],
+                    "working_capital_trend": "stable",
+                    "liquidity_assessment": "adequate"
+                },
+                "analysis_confidence": 0.7
+            })
+        
+        return analysis
+
     def _finalize_analysis(self, basic_metrics: Dict[str, Any], extracted_data: Dict[str, Any], 
                           gpt_insights: Dict[str, Any] = None, gpt_enhanced: bool = False) -> Dict[str, Any]:
         """Finalize the comprehensive analysis with all metrics and insights."""
