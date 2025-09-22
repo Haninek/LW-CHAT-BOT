@@ -2,6 +2,10 @@ import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { Upload, FileText, DollarSign, Calculator, Download, Zap, TrendingUp, AlertCircle, CheckCircle } from 'lucide-react'
 import { useDropzone } from 'react-dropzone'
+import MonthlySummary from '@/components/analysis/MonthlySummary'
+import CsvTable from '@/components/analysis/CsvTable'
+import { readCsvFile, parseCsv, coerceMonthlyRows } from '@/lib/csv'
+import type { MonthlyCsvRow } from '@/types/analysis'
 import { useAppStore } from '../state/useAppStore'
 import { apiClient } from '../lib/api'
 
@@ -44,11 +48,41 @@ const toastToneStyles: Record<ToastTone, { container: string; icon: string; butt
   }
 }
 
+function computeOfferOverrides(rows: MonthlyCsvRow[]) {
+  if (!rows?.length) return undefined
+  const months = rows.length
+  let totalEligible = 0
+  let totalDeposits = 0
+  let totalMcaOut = 0
+
+  for (const r of rows) {
+    const dep = Math.max(0, r.total_deposits || 0)
+    const wires = Math.max(0, r.wire_credits || 0)
+    const eligible = Math.max(0, dep - wires)
+    totalEligible += eligible
+    totalDeposits += dep
+    totalMcaOut += Math.max(0, r.withdrawals_PFSINGLE_PT || 0)
+  }
+
+  const avgEligible = months ? totalEligible / months : 0
+  const mcaLoad = totalDeposits ? (totalMcaOut / totalDeposits) : 0
+
+  const holdbackPct = mcaLoad >= 0.9 ? 0.08 : mcaLoad >= 0.8 ? 0.10 : 0.12
+
+  return {
+    normalization: { exclude_wires: true, avg_eligible_inflow: avgEligible },
+    holdback_cap: holdbackPct,
+    factor_tiers: [1.20, 1.30, 1.45],
+    remit_frequency: 'daily',
+  }
+}
+
 export default function OffersLab() {
   const { currentMetrics, setCurrentMetrics, offerOverrides } = useAppStore()
   const [uploading, setUploading] = useState(false)
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
   const [generatedOffers, setGeneratedOffers] = useState<any[]>([])
+  const [csvRows, setCsvRows] = useState<MonthlyCsvRow[]>([])
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [merchantInfo, setMerchantInfo] = useState<MerchantSummary | null>(null)
@@ -227,13 +261,21 @@ export default function OffersLab() {
     }
   }
 
+  const handleCsvUpload = async (file: File) => {
+    const text = await readCsvFile(file)
+    const rawRows = parseCsv(text)
+    const rows = coerceMonthlyRows(rawRows)
+    setCsvRows(rows)
+  }
+
   const handleGenerateOffers = async (metricsOverride?: any) => {
     const metricsToUse = metricsOverride ?? currentMetrics
     if (!metricsToUse) return
 
     setGenerating(true)
     try {
-      const response = await apiClient.generateOffers(metricsToUse, offerOverrides)
+      const overrides = csvRows.length ? computeOfferOverrides(csvRows) : offerOverrides
+      const response = await apiClient.generateOffers(metricsToUse, overrides)
       if (response.success && response.data?.offers) {
         setGeneratedOffers(response.data.offers)
       }
@@ -624,26 +666,44 @@ export default function OffersLab() {
                   </div>
                 </div>
 
-                <motion.button
-                  onClick={handleGenerateOffers}
-                  disabled={generating}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="w-full mt-6 py-3 px-6 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white rounded-xl font-medium shadow-lg shadow-emerald-600/25 transition-all duration-200 flex items-center justify-center"
-                >
-                  {generating ? (
-                    <>
-                      <div className="w-5 h-5 mr-2 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                      Generating Offers...
-                    </>
-                  ) : (
-                    <>
-                      <Zap className="w-5 h-5 mr-2" />
-                      Generate Loan Offers
-                    </>
-                  )}
-                </motion.button>
               </motion.div>
+            )}
+
+            <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/50">
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">Upload Monthly CSV (optional)</h3>
+              <input
+                type="file"
+                accept=".csv"
+                onChange={e => e.target.files?.[0] && handleCsvUpload(e.target.files[0])}
+                className="block w-full text-sm text-slate-700 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200"
+              />
+              <p className="text-xs text-slate-500 mt-1">Tip: Use the exported CSV with columns like total_deposits, withdrawals_PFSINGLE_PT, wire_credits, etc.</p>
+            </div>
+
+            {csvRows.length > 0 && <MonthlySummary rows={csvRows} />}
+
+            {csvRows.length > 0 && <CsvTable rows={csvRows} />}
+
+            {currentMetrics && (
+              <motion.button
+                onClick={handleGenerateOffers}
+                disabled={generating}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className="w-full py-3 px-6 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white rounded-xl font-medium shadow-lg shadow-emerald-600/25 transition-all duration-200 flex items-center justify-center"
+              >
+                {generating ? (
+                  <>
+                    <div className="w-5 h-5 mr-2 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                    Generating Offers...
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-5 h-5 mr-2" />
+                    Generate Loan Offers
+                  </>
+                )}
+              </motion.button>
             )}
           </motion.div>
 
