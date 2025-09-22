@@ -1,0 +1,753 @@
+MPLEMENTATION BRIEF — Offer Lab: CSV Table + Monthly Snapshot (pre-offers)
+Goals
+
+On the Offers Lab page, add a CSV upload that parses /months-level metrics and renders:
+
+A sortable table showing all parsed fields.
+
+A high-level snapshot (by month) section matching the narrative style the user provided (Deposits / Withdrawals / Balances, then “What stands out” with actionable insights).
+
+The snapshot appears before generating offers. When the user clicks “Generate Offers”, we’ll use normalized revenue (exclude one-time wires) and safe holdback caps (8–12%) to compute tiers.
+
+Files to create / edit
+1) web/src/types/analysis.ts
+export type MonthlyCsvRow = {
+  file: string
+  period?: string | null
+
+  beginning_balance: number
+  ending_balance: number
+  net_change: number
+
+  total_deposits: number        // positive
+  deposit_count: number
+  deposits_from_RADOVANOVIC?: number // treat as $ amount if present
+  mobile_check_deposits?: number     // $
+  wire_credits?: number              // $ (one-time inflow to exclude from normalization)
+
+  total_withdrawals: number     // negative in CSV; use Math.abs for $ out
+  withdrawal_count?: number
+
+  // Category withdrawal $ amounts (assume positive numbers in CSV)
+  withdrawals_PFSINGLE_PT?: number
+  withdrawals_Zelle?: number
+  withdrawals_AMEX?: number
+  withdrawals_CHASE_CC?: number
+  withdrawals_CADENCE_BANK?: number
+  withdrawals_SBA_EIDL?: number
+  withdrawals_Nav_Technologies?: number
+
+  min_daily_ending_balance?: number
+  max_daily_ending_balance?: number
+}
+
+2) web/src/lib/csv.ts
+export async function readCsvFile(file: File): Promise<string> {
+  const text = await file.text()
+  return text
+}
+
+// Minimal CSV parser for simple, comma-separated no-quote rows
+export function parseCsv(text: string): Record<string, string>[] {
+  const lines = text.trim().split(/\r?\n/)
+  if (lines.length === 0) return []
+  const headers = lines[0].split(",").map(h => h.trim())
+  return lines.slice(1).map(line => {
+    const cols = line.split(",")
+    const row: Record<string,string> = {}
+    headers.forEach((h, i) => row[h] = (cols[i] ?? "").trim())
+    return row
+  })
+}
+
+export function coerceMonthlyRows(rows: Record<string,string>[]) {
+  const num = (v: string | undefined) => {
+    if (v == null || v === "") return 0
+    const n = Number(v)
+    return Number.isFinite(n) ? n : 0
+  }
+  return rows.map(r => ({
+    file: r.file,
+    period: r.period ?? null,
+    beginning_balance: num(r.beginning_balance),
+    ending_balance: num(r.ending_balance),
+    net_change: num(r.net_change),
+
+    total_deposits: num(r.total_deposits),
+    deposit_count: num(r.deposit_count),
+
+    deposits_from_RADOVANOVIC: num(r.deposits_from_RADOVANOVIC),
+    mobile_check_deposits: num(r.mobile_check_deposits),
+    wire_credits: num(r.wire_credits),
+
+    total_withdrawals: num(r.total_withdrawals), // likely negative
+    withdrawal_count: num(r.withdrawal_count),
+
+    withdrawals_PFSINGLE_PT: num(r.withdrawals_PFSINGLE_PT),
+    withdrawals_Zelle: num(r.withdrawals_Zelle),
+    withdrawals_AMEX: num(r.withdrawals_AMEX),
+    withdrawals_CHASE_CC: num(r.withdrawals_CHASE_CC),
+    withdrawals_CADENCE_BANK: num(r.withdrawals_CADENCE_BANK),
+    withdrawals_SBA_EIDL: num(r.withdrawals_SBA_EIDL),
+    withdrawals_Nav_Technologies: num(r.withdrawals_Nav_Technologies),
+
+    min_daily_ending_balance: num(r.min_daily_ending_balance),
+    max_daily_ending_balance: num(r.max_daily_ending_balance),
+  }))
+}
+
+3) web/src/components/analysis/CsvTable.tsx
+import React from 'react'
+import type { MonthlyCsvRow } from '@/types/analysis'
+
+function fmt(n?: number, opts: Intl.NumberFormatOptions = {}) {
+  if (n == null) return '—'
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2, ...opts }).format(n)
+}
+
+type Props = { rows: MonthlyCsvRow[] }
+
+export default function CsvTable({ rows }: Props) {
+  if (!rows?.length) return null
+
+  return (
+    <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/50">
+      <h3 className="text-lg font-semibold text-slate-900 mb-3">Parsed Monthly Metrics (CSV)</h3>
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-sm">
+          <thead className="text-left text-slate-600">
+            <tr className="[&>th]:px-3 [&>th]:py-2">
+              <th>File</th>
+              <th>Month</th>
+              <th>Beg Bal</th>
+              <th>End Bal</th>
+              <th>Net</th>
+              <th>Deposits</th>
+              <th>Deposit Cnt</th>
+              <th>RADOVANOVIC</th>
+              <th>Mobile Checks</th>
+              <th>Wires</th>
+              <th>Withdrawals</th>
+              <th>PFSINGLE PT</th>
+              <th>CADENCE</th>
+              <th>SBA EIDL</th>
+              <th>AMEX</th>
+              <th>CHASE</th>
+              <th>Zelle</th>
+              <th>Nav</th>
+              <th>Min End Bal</th>
+              <th>Max End Bal</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {rows.map((r, i) => {
+              const totalOut = Math.abs(r.total_withdrawals || 0)
+              return (
+                <tr key={i} className="[&>td]:px-3 [&>td]:py-2">
+                  <td className="truncate max-w-[220px]" title={r.file}>{r.file}</td>
+                  <td>{inferLabelFromFile(r.file)}</td>
+                  <td>{fmt(r.beginning_balance)}</td>
+                  <td>{fmt(r.ending_balance)}</td>
+                  <td className={r.net_change >= 0 ? 'text-green-600' : 'text-red-600'}>{fmt(r.net_change)}</td>
+                  <td>{fmt(r.total_deposits)}</td>
+                  <td>{r.deposit_count || '—'}</td>
+                  <td>{fmt(r.deposits_from_RADOVANOVIC)}</td>
+                  <td>{fmt(r.mobile_check_deposits)}</td>
+                  <td>{fmt(r.wire_credits)}</td>
+                  <td>{fmt(totalOut)}</td>
+                  <td>{fmt(r.withdrawals_PFSINGLE_PT)}</td>
+                  <td>{fmt(r.withdrawals_CADENCE_BANK)}</td>
+                  <td>{fmt(r.withdrawals_SBA_EIDL)}</td>
+                  <td>{fmt(r.withdrawals_AMEX)}</td>
+                  <td>{fmt(r.withdrawals_CHASE_CC)}</td>
+                  <td>{fmt(r.withdrawals_Zelle)}</td>
+                  <td>{fmt(r.withdrawals_Nav_Technologies)}</td>
+                  <td>{fmt(r.min_daily_ending_balance)}</td>
+                  <td>{fmt(r.max_daily_ending_balance)}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function inferLabelFromFile(file: string) {
+  // e.g., "…_Months_Bank_Statement__August_25_…pdf" → "August 2025"
+  const m = file.match(/(January|February|March|April|May|June|July|August|September|October|November|December)[\s_]+(\d{2,4})/i)
+  if (m) {
+    const month = m[1]
+    const year = m[2].length === 2 ? `20${m[2]}` : m[2]
+    return `${month} ${year}`
+  }
+  // fallback try: Aug_25 → Aug 2025
+  const m2 = file.match(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[_\- ]?(\d{2})/i)
+  if (m2) return `${expand(m2[1])} 20${m2[2]}`
+  return '—'
+}
+function expand(abbr: string) {
+  const map: Record<string,string> = {Jan:'January',Feb:'February',Mar:'March',Apr:'April',May:'May',Jun:'June',Jul:'July',Aug:'August',Sep:'September',Oct:'October',Nov:'November',Dec:'December'}
+  return map[abbr] || abbr
+}
+
+4) web/src/components/analysis/MonthlySummary.tsx
+import React from 'react'
+import type { MonthlyCsvRow } from '@/types/analysis'
+
+const usd = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n)
+
+type Props = { rows: MonthlyCsvRow[] }
+export default function MonthlySummary({ rows }: Props) {
+  if (!rows?.length) return null
+  // Sort newest first by filename inference (crude; uses label fallback)
+  const sorted = [...rows].sort((a, b) => (a.file > b.file ? -1 : 1))
+
+  return (
+    <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/50">
+      <h3 className="text-lg font-semibold text-slate-900 mb-3">High-level snapshot (by month)</h3>
+      <div className="space-y-6">
+        {sorted.map((r, idx) => {
+          const label = monthLabelRange(r.file) // e.g., "August 2025 (Aug 1–31, 2025)"
+          const totalOut = Math.abs(r.total_withdrawals || 0)
+          const mcaOut = Math.abs(r.withdrawals_PFSINGLE_PT || 0)
+          const mcaPct = totalOut ? (mcaOut / totalOut) : 0
+
+          const deposits = r.total_deposits || 0
+          const depRAD = Math.abs(r.deposits_from_RADOVANOVIC || 0)
+          const depMobile = Math.abs(r.mobile_check_deposits || 0)
+          const depWire = Math.abs(r.wire_credits || 0)
+
+          const minEnd = r.min_daily_ending_balance
+          const maxEnd = r.max_daily_ending_balance
+
+          // RTR proxy ~ outflows to PFSINGLE PT / deposits, capped 0-1
+          const rtrProxy = deposits ? (mcaOut / deposits) : 0
+
+          const flags: string[] = []
+          if (mcaPct >= 0.7) flags.push('Heavy MCA load')
+          if (depWire > 0) flags.push('One-time wire inflow present')
+          if ((r.withdrawals_CADENCE_BANK || 0) > 0 || (r.withdrawals_SBA_EIDL || 0) > 0) {
+            flags.push('Other fixed obligations (bank loan, SBA EIDL)')
+          }
+
+          return (
+            <div key={idx} className="space-y-2">
+              <h4 className="font-medium text-slate-900">{label}</h4>
+
+              <p className="text-slate-700">
+                <strong>Deposits:</strong> {usd(deposits)} across {r.deposit_count || 0} credits
+                {depRAD || depMobile ? <> (mix of {depRAD ? <>ACH “From RADOVANOVIC CORP” {usd(depRAD)}</> : null}{depRAD && depMobile ? ' and ' : ''}{depMobile ? <>mobile check deposits {usd(depMobile)}</> : null}{depWire ? <>, plus wire(s) {usd(depWire)}</> : null}).</> : '.'}
+                <div className="text-xs text-slate-500 truncate">{r.file}</div>
+              </p>
+
+              <p className="text-slate-700">
+                <strong>Withdrawals:</strong> {usd(totalOut)} total. Of this, {usd(mcaOut)}
+                {totalOut ? <> ({Math.round(mcaPct*100)}%)</> : null}
+                {' '}are recurring “Electronic Settlement — SETTLMT PFSINGLE PT”. Non-MCA debits include
+                {lineIf(r.withdrawals_CADENCE_BANK, 'CADENCE BANK')}
+                {lineIf(r.withdrawals_SBA_EIDL, 'SBA EIDL')}
+                {lineIf(r.withdrawals_CHASE_CC, 'CHASE credit card')}
+                {lineIf(r.withdrawals_AMEX, 'AMEX')}
+                {lineIf(r.withdrawals_Nav_Technologies, 'Nav Tech fees')}
+                {lineIf(r.withdrawals_Zelle, 'Zelle')}
+                . <div className="text-xs text-slate-500 truncate">{r.file}</div>
+              </p>
+
+              <p className="text-slate-700">
+                <strong>Balances:</strong> {minEnd != null && maxEnd != null ? <>min {usd(minEnd)}, max {usd(maxEnd)}; </> : null}
+                period ending balance {usd(r.ending_balance)} (net change {usd(r.net_change)} from beginning {usd(r.beginning_balance)}).
+                <div className="text-xs text-slate-500 truncate">{r.file}</div>
+              </p>
+
+              <div className="text-slate-800 mt-2">
+                <strong>Quick ratios & flags:</strong>{' '}
+                RTR proxy ≈ {Math.round(rtrProxy*100)}% {rtrProxy >= 0.9 ? '(very high risk)' : rtrProxy >= 0.8 ? '(high)' : ''}.
+                {flags.length ? <> {' '}<em>{flags.join(' · ')}</em></> : null}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function lineIf(v?: number, label?: string) {
+  const val = Math.abs(v || 0)
+  return val ? ` ${label} ${usd(val)},` : ''
+}
+
+function monthLabelRange(file: string) {
+  // Example outputs: "August 2025 (Aug 1–31, 2025)" or fallback to filename
+  const full = inferMonthYear(file)
+  if (!full) return file
+  const [monthName, year] = full
+  const short = monthName.slice(0,3)
+  const endDay = ['January','March','May','July','August','October','December'].includes(monthName) ? 31 :
+                 monthName === 'February' ? 28 : 30
+  return `${monthName} ${year} (${short} 1–${endDay}, ${year})`
+}
+function inferMonthYear(file: string): [string,string] | null {
+  const m = file.match(/(January|February|March|April|May|June|July|August|September|October|November|December)[\s_]+(\d{2,4})/i)
+  if (m) return [cap(m[1]), m[2].length === 2 ? `20${m[2]}` : m[2]]
+  const m2 = file.match(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[_\- ]?(\d{2})/i)
+  if (m2) return [expand(m2[1]), `20${m2[2]}`]
+  return null
+}
+function cap(s: string){ return s[0].toUpperCase()+s.slice(1).toLowerCase() }
+function expand(abbr: string) {
+  const map: Record<string,string> = {Jan:'January',Feb:'February',Mar:'March',Apr:'April',May:'May',Jun:'June',Jul:'July',Aug:'August',Sep:'September',Oct:'October',Nov:'November',Dec:'December'}
+  return map[abbr] || abbr
+}
+
+5) Update web/src/pages/OffersLab.tsx
+
+Add a small CSV upload block (in the “analysis” area, above the offers list), parse and store to state, show the MonthlySummary and CsvTable.
+
+Keep your current bank-statement upload & parse flow. The snapshot section shows if either CSV is loaded or backend metrics are mapped (we can add that mapping later; for now CSV drives the UI).
+
+Patch (insert near the top):
+
+import React, { useState, useCallback } from 'react'
+import MonthlySummary from '@/components/analysis/MonthlySummary'
+import CsvTable from '@/components/analysis/CsvTable'
+import { readCsvFile, parseCsv, coerceMonthlyRows } from '@/lib/csv'
+import type { MonthlyCsvRow } from '@/types/analysis'
+
+
+State (with existing hooks):
+
+const [csvRows, setCsvRows] = useState<MonthlyCsvRow[]>([])
+
+
+CSV upload handler (place near other handlers):
+
+const handleCsvUpload = async (file: File) => {
+  const text = await readCsvFile(file)
+  const rawRows = parseCsv(text)
+  const rows = coerceMonthlyRows(rawRows)
+  setCsvRows(rows)
+}
+
+
+CSV input UI (place above offers section, below your bank-analysis card):
+
+<div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/50">
+  <h3 className="text-lg font-semibold text-slate-900 mb-2">Upload Monthly CSV (optional)</h3>
+  <input
+    type="file"
+    accept=".csv"
+    onChange={e => e.target.files?.[0] && handleCsvUpload(e.target.files[0])}
+    className="block w-full text-sm text-slate-700 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200"
+  />
+  <p className="text-xs text-slate-500 mt-1">Tip: Use the exported CSV with columns like total_deposits, withdrawals_PFSINGLE_PT, wire_credits, etc.</p>
+</div>
+
+{/* High-level narrative (pre-offers) */}
+{csvRows.length > 0 && <MonthlySummary rows={csvRows} />}
+
+{/* Data table */}
+{csvRows.length > 0 && <CsvTable rows={csvRows} />}
+
+Offer generation: normalization & capacity (front-end prep)
+
+When calling apiClient.generateOffers(metrics, overrides), prepare overrides that:
+
+Exclude wires from average eligible inflow:
+eligibleInflow = totalDeposits - wireCredits (per month), then average across months.
+
+Cap holdback between 8–12% depending on MCA load (higher MCA load → lower cap).
+
+Factor tiers: provide [1.20, 1.30, 1.45] (you can let backend compute final tiers; pass hints).
+
+Add helper in OffersLab.tsx:
+
+function computeOfferOverrides(rows: MonthlyCsvRow[]) {
+  if (!rows?.length) return undefined
+  const months = rows.length
+  let totalEligible = 0
+  let totalDeposits = 0
+  let totalMcaOut = 0
+
+  for (const r of rows) {
+    const dep = Math.max(0, r.total_deposits || 0)
+    const wires = Math.max(0, r.wire_credits || 0)
+    const eligible = Math.max(0, dep - wires)
+    totalEligible += eligible
+    totalDeposits += dep
+    totalMcaOut += Math.max(0, r.withdrawals_PFSINGLE_PT || 0)
+  }
+
+  const avgEligible = months ? totalEligible / months : 0
+  const mcaLoad = totalDeposits ? (totalMcaOut / totalDeposits) : 0
+
+  // Safe holdback band
+  const holdbackPct = mcaLoad >= 0.9 ? 0.08 : mcaLoad >= 0.8 ? 0.10 : 0.12
+
+  return {
+    normalization: { exclude_wires: true, avg_eligible_inflow: avgEligible },
+    holdback_cap: holdbackPct,               // 0.08 – 0.12
+    factor_tiers: [1.20, 1.30, 1.45],        // hint to backend
+    remit_frequency: 'daily',                // or 'weekly' if the user chooses
+  }
+}
+
+
+Use it when generating offers:
+
+const handleGenerateOffers = async () => {
+  if (!currentMetrics) return
+  setGenerating(true)
+  try {
+    const overrides = csvRows.length ? computeOfferOverrides(csvRows) : offerOverrides
+    const response = await apiClient.generateOffers(currentMetrics, overrides)
+    if (response.success && response.data?.offers) {
+      setGeneratedOffers(response.data.offers)
+    }
+  } finally {
+    setGenerating(false)
+  }
+}
+
+Acceptance Criteria
+
+ Uploading the CSV displays:
+
+ A Monthly Summary section that reads like:
+
+“August 2025 (Aug 1–31, 2025) — Deposits: $X across N credits (mix …). Withdrawals: $Y total; of this, $Z (~95%) are SETTLMT PFSINGLE PT … Balances: min … max … ending … net change …”
+
+ A table with columns mirroring the CSV (see CsvTable).
+
+ Actionable insights inline:
+
+Heavy MCA load when PFSINGLE PT ≥ 70% of monthly outflows.
+
+RTR proxy = PFSINGLE PT ÷ Deposits (show % and qualitative risk).
+
+“Other fixed obligations” if CADENCE BANK/SBA EIDL present.
+
+“One-time wire inflow” if wire_credits > 0.
+
+ Clicking Generate Offers uses normalized average inflow (excludes wires) and safe holdback caps (8–12%) to produce tiers.
+
+ All UI is Tailwind styled, matching the look of existing cards.
+
+Notes & Edge Cases
+
+Signs: total_withdrawals in your CSV appears negative. Always use Math.abs for dollar display and comparisons.
+
+Category columns: We treat withdrawals_PFSINGLE_PT, deposits_from_RADOVANOVIC, etc., as $ amounts (some may be 0). If a column is actually a count, adjust the label to “… across X debits” and skip the $ formatting.
+
+Month label: We infer month/year from file. If period becomes populated later, prefer that.
+
+Backend metrics mapping: This spec uses CSV. Later, we can map backend statement metrics to the same MonthlyCsvRow shape so the snapshot shows without CSV.
+
+Optional (nice to have)
+
+Add a toggle (Daily vs Weekly) before “Generate Offers” that switches remit_frequency.
+
+Add small tooltips explaining each flag (e.g., “RTR proxy is recurring settlement dollars / total deposits for the month”).
+
+If you want, I can also supply a second commit that maps the backend’s MetricsSnapshot.payload into the same MonthlyCsvRow shape, so the snapshot renders even without CSV.
+
+You said:
+we would also like the same fields on the csv file to display on the front end of the screen 
+ChatGPT said:
+Thought for 57s
+
+got it—here’s a tight, Codex-ready brief that makes the front end display exactly the same fields that are in the CSV, no pruning. It adds a dynamic, searchable, sortable table that renders all columns from the CSV plus an inline row expander to view every key→value pair. It sits in Offers Lab right above your offer generation, alongside the monthly narrative.
+
+IMPLEMENTATION BRIEF — Show all CSV fields in Offers Lab
+What to build
+
+CSV upload → dynamic table that renders every column found in the CSV header.
+
+Type-aware formatting (currency vs integer vs text) by inferring field types from their names and values.
+
+UX niceties: sticky header, horizontal scroll, search, column show/hide, sortable headers, and expandable rows to view all fields.
+
+Works with your existing monthly snapshot + offer generation (unchanged).
+
+Files to add / edit
+1) web/src/lib/csv.ts (extend parser & inference)
+// Existing helpers (keep) …
+export async function readCsvFile(file: File): Promise<string> {
+  return await file.text()
+}
+
+// Simple RFC4180-ish parser that supports quoted fields and commas inside quotes.
+// If you already added a simpler parseCsv, replace it with this one.
+export function parseCsv(text: string): Record<string, string>[] {
+  const lines = text.replace(/\r\n/g, '\n').split('\n').filter(l => l.trim().length)
+  if (lines.length === 0) return []
+
+  const split = (line: string) => {
+    const out: string[] = []
+    let cur = ''
+    let inQ = false
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i]
+      if (ch === '"') {
+        if (inQ && line[i+1] === '"') { cur += '"'; i++ } else { inQ = !inQ }
+      } else if (ch === ',' && !inQ) {
+        out.push(cur); cur = ''
+      } else {
+        cur += ch
+      }
+    }
+    out.push(cur)
+    return out.map(s => s.trim())
+  }
+
+  const headers = split(lines[0]).map(h => h.replace(/^\uFEFF/, '')) // strip bom
+  const rows: Record<string, string>[] = []
+  for (let i = 1; i < lines.length; i++) {
+    const cols = split(lines[i])
+    if (cols.length === 1 && cols[0] === '') continue
+    const row: Record<string,string> = {}
+    headers.forEach((h, idx) => { row[h] = (cols[idx] ?? '').trim() })
+    rows.push(row)
+  }
+  return rows
+}
+
+// Basic type inference by name/value. We won’t coerce the raw data here; the table handles it.
+export function looksCurrencyKey(k: string) {
+  return /(amount|balance|deposit|withdrawal|fee|wire|total|avg|min|max|remit|payment|settle)/i.test(k)
+}
+export function looksIntegerKey(k: string) {
+  return /(count|days|nsf)/i.test(k)
+}
+export function coerceValue(key: string, raw: string): number|string {
+  if (raw === '' || raw == null) return ''
+  const clean = raw.replace(/[\$,]/g, '')
+  const num = Number(clean)
+  if (Number.isFinite(num)) {
+    if (looksIntegerKey(key)) return Math.trunc(num)
+    if (looksCurrencyKey(key)) return num
+    // If numeric but not a known “int” key, keep as number for sorting
+    return num
+  }
+  return raw
+}
+
+2) web/src/components/analysis/DynamicCsvTable.tsx (new)
+import React, { useMemo, useState } from 'react'
+import { coerceValue, looksCurrencyKey, looksIntegerKey } from '@/lib/csv'
+
+type Row = Record<string, string>
+type Props = { rowsRaw: Row[] }
+
+const usd = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n)
+const intf = (n: number) => new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(n)
+
+export default function DynamicCsvTable({ rowsRaw }: Props) {
+  const [q, setQ] = useState('')
+  const [expanded, setExpanded] = useState<number | null>(null)
+  const [sortKey, setSortKey] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc'|'desc'>('desc')
+  const [hidden, setHidden] = useState<Set<string>>(new Set())
+
+  const headers = useMemo(() => {
+    const first = rowsRaw[0] || {}
+    return Object.keys(first)
+  }, [rowsRaw])
+
+  const rows = useMemo(() => {
+    // Coerce per cell for sort/display
+    const coerced = rowsRaw.map(r => {
+      const out: Record<string, any> = {}
+      for (const k of Object.keys(r)) out[k] = coerceValue(k, r[k])
+      return out
+    })
+
+    // Search
+    const filtered = q
+      ? coerced.filter(r => Object.values(r).some(v => String(v).toLowerCase().includes(q.toLowerCase())))
+      : coerced
+
+    // Sort
+    if (sortKey) {
+      filtered.sort((a,b) => {
+        const av = a[sortKey!]
+        const bv = b[sortKey!]
+        if (typeof av === 'number' && typeof bv === 'number') {
+          return sortDir === 'asc' ? av - bv : bv - av
+        }
+        return sortDir === 'asc'
+          ? String(av).localeCompare(String(bv))
+          : String(bv).localeCompare(String(av))
+      })
+    }
+    return filtered
+  }, [rowsRaw, q, sortKey, sortDir])
+
+  if (!rowsRaw?.length) return null
+
+  const toggleHide = (k: string) => {
+    const next = new Set(hidden)
+    next.has(k) ? next.delete(k) : next.add(k)
+    setHidden(next)
+  }
+
+  const visibleHeaders = headers.filter(h => !hidden.has(h))
+
+  return (
+    <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/50">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <h3 className="text-lg font-semibold text-slate-900">All CSV Fields</h3>
+        <input
+          value={q}
+          onChange={e=>setQ(e.target.value)}
+          placeholder="Search rows…"
+          className="border border-slate-300 rounded-md px-3 py-1.5 text-sm w-64"
+        />
+      </div>
+
+      {/* Column visibility */}
+      <div className="flex flex-wrap gap-2 mb-3">
+        {headers.map(h => (
+          <label key={h} className="text-xs bg-slate-100 rounded px-2 py-1 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={!hidden.has(h)}
+              onChange={() => toggleHide(h)}
+              className="mr-1 align-middle"
+            />
+            {h}
+          </label>
+        ))}
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-sm">
+          <thead className="sticky top-0 bg-slate-50 text-slate-600">
+            <tr className="[&>th]:px-3 [&>th]:py-2">
+              <th className="w-10"></th>
+              {visibleHeaders.map(h => (
+                <th key={h}>
+                  <button
+                    className="hover:underline"
+                    onClick={()=>{
+                      if (sortKey === h) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+                      setSortKey(h)
+                    }}
+                  >
+                    {h}{sortKey===h ? (sortDir==='asc'?' ▲':' ▼'):''}
+                  </button>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {rows.map((r, i) => (
+              <React.Fragment key={i}>
+                <tr className="[&>td]:px-3 [&>td]:py-2 hover:bg-slate-50">
+                  <td>
+                    <button
+                      className="text-slate-500 hover:text-slate-700"
+                      onClick={()=> setExpanded(expanded===i? null : i)}
+                      aria-label="Expand row"
+                    >
+                      {expanded===i ? '−' : '+'}
+                    </button>
+                  </td>
+                  {visibleHeaders.map(h => (
+                    <td key={h} title={String(r[h] ?? '')} className="whitespace-nowrap max-w-[260px] truncate">
+                      {renderCell(h, r[h])}
+                    </td>
+                  ))}
+                </tr>
+                {expanded===i && (
+                  <tr>
+                    <td colSpan={1 + visibleHeaders.length} className="bg-slate-50">
+                      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3 p-3">
+                        {headers.map(h => (
+                          <div key={h} className="text-xs">
+                            <div className="text-slate-500">{h}</div>
+                            <div className="font-medium text-slate-900 break-all">{String(r[h] ?? '')}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function renderCell(key: string, v: any) {
+  if (v === '' || v == null) return '—'
+  if (typeof v === 'number') {
+    if (looksIntegerKey(key)) return intf(v)
+    if (looksCurrencyKey(key)) return usd(v)
+    // Negative numbers: show with red and parentheses
+    if (v < 0) return <span className="text-red-600">({usd(Math.abs(v))})</span>
+    return v.toLocaleString()
+  }
+  return String(v)
+}
+
+3) web/src/pages/OffersLab.tsx (wire it in)
+
+Add imports:
+
+import DynamicCsvTable from '@/components/analysis/DynamicCsvTable'
+import { parseCsv } from '@/lib/csv'
+
+
+Add state for raw rows:
+
+const [csvRawRows, setCsvRawRows] = useState<Record<string,string>[]>([])
+
+
+Update CSV handler to keep raw rows (alongside your typed csvRows if you already added them):
+
+const handleCsvUpload = async (file: File) => {
+  const text = await readCsvFile(file)
+  const rawRows = parseCsv(text)
+  setCsvRawRows(rawRows)
+  // (Optional) you can still compute typed rows for MonthlySummary if you implemented it
+  // const typedRows = coerceMonthlyRows(rawRows); setCsvRows(typedRows)
+}
+
+
+Render the table where you render the summary (above offers):
+
+{/* Monthly narrative (optional, if implemented from earlier brief) */}
+{csvRows?.length > 0 && <MonthlySummary rows={csvRows} />}
+
+{/* NEW: Dynamic table that shows EXACT CSV columns */}
+{csvRawRows?.length > 0 && <DynamicCsvTable rowsRaw={csvRawRows} />}
+
+Optional (but recommended)
+
+Persist column visibility in localStorage by saving/restoring hidden set.
+
+Export the filtered/sorted rows back to CSV for sharing.
+
+If your CSVs sometimes include very long text cells, consider wrapping (break-all) or show a copy-to-clipboard icon on hover.
+
+Acceptance Criteria
+
+ Uploading the CSV immediately renders a table with all columns present in the CSV header—no hard-coded list.
+
+ Cells show intuitive formatting:
+
+Currency-ish fields (deposits/withdrawals/balances/amounts/totals) → $12,345.67 (negatives in red with parentheses).
+
+Integer-ish fields (counts/days/NSF) → 1,234.
+
+Everything else → plain text (truncated with tooltip).
+
+ Headers are clickable to sort, there’s a search box, and a column visibility selector.
+
+ Clicking a row expands a panel with every field (key → value) for that row.

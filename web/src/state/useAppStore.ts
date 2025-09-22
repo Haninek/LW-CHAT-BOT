@@ -26,7 +26,7 @@ const getEnvValue = (key: string): string | undefined => {
   return undefined
 }
 
-const defaultBaseUrl = getEnvValue('VITE_API_BASE') || ''
+const defaultBaseUrl = getEnvValue('VITE_API_BASE') || 'http://localhost:8000'
 const defaultApiKey = getEnvValue('VITE_API_KEY') || ''
 
 export type ChatMessage = {
@@ -157,7 +157,7 @@ export const useAppStore = create<AppState>()(
       currentMerchant: null,
       setCurrentMerchant: (merchant) => {
         set({ currentMerchant: merchant });
-        storage.setCurrentMerchant(merchant);
+        // Merchant stored in memory"
       },
       updateMerchantField: (fieldId, value, source = 'intake') => {
         const merchant = get().currentMerchant;
