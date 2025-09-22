@@ -114,6 +114,24 @@ async def get_monthly_rows(
     return {"ok": True, "rows": rows}
 
 
+@router.get("/transactions")
+async def get_transactions(
+    deal_id: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Get parsed transactions for the bank analysis engine."""
+    payload = _latest_snapshot(db, deal_id)
+    transactions = payload.get("transactions", [])
+    
+    return {
+        "success": True,
+        "data": {
+            "transactions": transactions,
+            "deal_id": deal_id,
+            "count": len(transactions)
+        }
+    }
+
 @router.get("/monthly.csv")
 async def download_monthly_csv(
     deal_id: str = Query(...),

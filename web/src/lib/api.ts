@@ -309,6 +309,11 @@ class ApiClient {
     const base = cfg.baseUrl || ''
     return `${base}/api/statements/monthly.csv?deal_id=${encodeURIComponent(dealId)}`
   }
+
+  async getTransactions(dealId: string) {
+    const endpoint = `/api/statements/transactions?deal_id=${encodeURIComponent(dealId)}`
+    return this.request(endpoint)
+  }
 }
 
 export const apiClient = new ApiClient()
