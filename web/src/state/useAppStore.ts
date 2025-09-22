@@ -117,7 +117,7 @@ export const useAppStore = create<AppState>()(
     (set, get) => ({
       // API Configuration - Use direct backend connection for Replit
       apiConfig: {
-        baseUrl: defaultBaseUrl,
+        baseUrl: 'https://c7e81ded-fce0-4303-b769-994a11bdbe33-00-1a1emwuwnmcai.janeway.replit.dev:8000',
         apiKey: defaultApiKey,
         idempotencyEnabled: true
       },
