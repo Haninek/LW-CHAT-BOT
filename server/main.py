@@ -107,7 +107,7 @@ def create_app() -> FastAPI:
     app.include_router(connectors.router, prefix="/api/connectors", tags=["connectors"])
     app.include_router(merchants.router, prefix="/api/merchants", tags=["merchants"])
     app.include_router(deals.router, prefix="/api", tags=["deals"])
-    app.include_router(documents.router, prefix="/api", tags=["documents"])
+    app.include_router(documents.router, tags=["documents"])
     app.include_router(underwriting.router, prefix="/api", tags=["underwriting"])
     app.include_router(intake.router, prefix="/api/intake", tags=["intake"])
     app.include_router(ingest.router, prefix="/api/ingest", tags=["ingest"])
