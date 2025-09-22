@@ -30,7 +30,9 @@ const getEnvValue = (key: string): string | undefined => {
 const getApiBaseUrl = () => {
   const replitDomain = getEnvValue('REPLIT_DEV_DOMAIN') || getEnvValue('REPLIT_DOMAINS')
   if (replitDomain) {
-    return `https://${replitDomain.split(',')[0]}:8000`
+    // In Replit, backend runs on port 8000 - use the same domain with port 8000
+    const baseDomain = replitDomain.split(',')[0]
+    return `https://${baseDomain}:8000`
   }
   return getEnvValue('VITE_API_BASE') || 'http://localhost:8000'
 }
