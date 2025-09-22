@@ -115,12 +115,12 @@ interface AppState {
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
-      // API Configuration - Use backend on port 8000
+      // API Configuration - Use relative URLs with Vite proxy
       apiConfig: {
-        baseUrl: 'http://localhost:8000',
+        baseUrl: '',
         apiKey: defaultApiKey,
         idempotencyEnabled: true,
-        timestamp: '2025-09-22-18:00' // Force cache refresh
+        timestamp: '2025-09-22-18:01' // Force cache refresh
       },
       setApiConfig: (config) => set((state) => ({
         apiConfig: { ...state.apiConfig, ...config }
@@ -230,7 +230,7 @@ export const useAppStore = create<AppState>()(
       }
     }),
     {
-      name: 'rules-intake-store-v2', // Force new storage
+      name: 'rules-intake-store-v3', // Force new storage with proxy
       partialize: (state) => ({
         apiConfig: state.apiConfig,
         sidebarOpen: state.sidebarOpen
