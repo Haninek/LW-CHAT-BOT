@@ -240,6 +240,18 @@ class ApiClient {
     return this.request(`/api/background/client/${clientId}/jobs`)
   }
 
+  // Monthly analysis
+  async getMonthlyRows(dealId: string) {
+    const endpoint = `/api/statements/monthly?deal_id=${encodeURIComponent(dealId)}`
+    return this.request<{ ok: boolean; rows: any[] }>(endpoint)
+  }
+
+  getMonthlyCsvUrl(dealId: string) {
+    const cfg = this.getConfig()
+    const base = cfg.baseUrl || ''
+    return `${base}/api/statements/monthly.csv?deal_id=${encodeURIComponent(dealId)}`
+  }
+
   // E-signature
   async sendSignatureRequest(request: any) {
     return this.request('/api/sign/send', {
