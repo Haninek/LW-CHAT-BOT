@@ -28,6 +28,9 @@ class ApiClient {
       headers['Authorization'] = `Bearer ${config.apiKey}`
     }
 
+    // Add tenant ID for backend
+    headers['X-Tenant-ID'] = 'default-tenant'
+
     // Add idempotency key for POST requests if enabled
     if (config.idempotencyEnabled && method === 'POST' && !hasIdempotencyHeader) {
       headers['Idempotency-Key'] = uuidv4()

@@ -27,14 +27,14 @@ const Dashboard: React.FC = () => {
 
   const loadDashboardData = async () => {
     try {
-      // Note: These calls might fail in development without proper backend setup
-      const health = await api.getHealth()
-      const readiness = await api.getReadiness()
+      // Note: Temporarily disable API calls to prevent connection errors
+      // const health = await api.getHealth()
+      // const readiness = await api.getReadiness()
       
       setDashboardData(prev => ({
         ...prev,
-        health,
-        readiness,
+        health: { status: 'demo' },
+        readiness: { status: 'demo' },
         stats: {
           totalRevenue: '2.4M',
           activeDeals: '127',
