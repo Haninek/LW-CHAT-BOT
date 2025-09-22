@@ -120,7 +120,7 @@ export const useAppStore = create<AppState>()(
         baseUrl: 'http://localhost:8000',
         apiKey: defaultApiKey,
         idempotencyEnabled: true,
-        timestamp: '2025-09-22-17:54' // Force cache refresh
+        timestamp: '2025-09-22-18:00' // Force cache refresh
       },
       setApiConfig: (config) => set((state) => ({
         apiConfig: { ...state.apiConfig, ...config }
@@ -230,7 +230,7 @@ export const useAppStore = create<AppState>()(
       }
     }),
     {
-      name: 'rules-intake-store',
+      name: 'rules-intake-store-v2', // Force new storage
       partialize: (state) => ({
         apiConfig: state.apiConfig,
         sidebarOpen: state.sidebarOpen
