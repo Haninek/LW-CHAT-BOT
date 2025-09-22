@@ -5,8 +5,10 @@ import { useDropzone } from 'react-dropzone'
 import MonthlySummary from '@/components/analysis/MonthlySummary'
 import CsvTable from '@/components/analysis/CsvTable'
 import { DynamicCsvTable } from '@/components/analysis/DynamicCsvTable'
+import { BankAnalysisPanel } from '@/components/analysis/BankAnalysisPanel'
 import { readCsvFile, parseCsv, coerceMonthlyRows } from '@/lib/csv'
 import type { MonthlyCsvRow } from '@/types/analysis'
+import type { Transaction } from '@/analysis/bankAnalysis'
 import { useAppStore } from '../state/useAppStore'
 import { apiClient } from '../lib/api'
 
@@ -87,6 +89,10 @@ export default function OffersLab() {
   const [monthlyRows, setMonthlyRows] = useState<MonthlyCsvRow[]>([])
   const [loadingMonthly, setLoadingMonthly] = useState(false)
   const [generating, setGenerating] = useState(false)
+  
+  // State for new transaction analysis
+  const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [loadingTransactions, setLoadingTransactions] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [merchantInfo, setMerchantInfo] = useState<MerchantSummary | null>(null)
   const [dealInfo, setDealInfo] = useState<DealSummary | null>(null)
@@ -239,6 +245,19 @@ export default function OffersLab() {
           console.warn('Could not fetch monthly rows:', error)
         } finally {
           setLoadingMonthly(false)
+        }
+
+        // Fetch transactions for new analysis engine
+        setLoadingTransactions(true)
+        try {
+          const transactionResponse = await apiClient.getTransactions(dealId)
+          if (transactionResponse.success && transactionResponse.data?.transactions) {
+            setTransactions(transactionResponse.data.transactions)
+          }
+        } catch (error) {
+          console.warn('Could not fetch transactions:', error)
+        } finally {
+          setLoadingTransactions(false)
         }
         
         await handleGenerateOffers(parseResult.metrics)
@@ -709,6 +728,14 @@ export default function OffersLab() {
                 </div>
 
                 {loadingMonthly && <div className="text-sm text-slate-500 mt-2">Loading monthly analysis…</div>}
+                {loadingTransactions && <div className="text-sm text-slate-500 mt-2">Loading transactions for analysis…</div>}
+
+                {/* New Bank Analysis Panel - Transaction-level analysis */}
+                {transactions.length > 0 && (
+                  <div className="mt-6">
+                    <BankAnalysisPanel transactions={transactions} dealId={dealInfo?.id} />
+                  </div>
+                )}
 
                 <MonthlySummary rows={monthlyRows} />
                 <div className="mt-6">
