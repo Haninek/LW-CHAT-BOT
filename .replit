@@ -2,7 +2,7 @@ modules = ["python-3.11", "bash", "nodejs-20", "python3"]
 
 [nix]
 channel = "stable-25_05"
-packages = ["cargo", "libiconv", "libxcrypt", "openssl", "pkg-config", "rustc"]
+packages = ["cargo", "freetype", "gumbo", "harfbuzz", "jbig2dec", "libiconv", "libjpeg_turbo", "libxcrypt", "mupdf", "openjpeg", "openssl", "pkg-config", "rustc", "swig", "xcbuild"]
 
 [agent]
 expertMode = true
@@ -59,10 +59,6 @@ externalPort = 8000
 [[ports]]
 localPort = 41629
 externalPort = 3000
-
-[[ports]]
-localPort = 42297
-externalPort = 3001
 
 [deployment]
 deploymentTarget = "autoscale"

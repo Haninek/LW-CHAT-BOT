@@ -1,9 +1,9 @@
 import React from 'react'
-import type { MonthlyCsvRow } from '@/types/analysis'
+import type { MonthlyRow } from '@/types/analysis'
 
 const usd = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n)
 
-type Props = { rows: MonthlyCsvRow[] }
+type Props = { rows: MonthlyRow[] }
 export default function MonthlySummary({ rows }: Props) {
   if (!rows?.length) return null
   // Sort newest first by filename inference (crude; uses label fallback)
