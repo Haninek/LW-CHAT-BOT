@@ -43,7 +43,9 @@ def _pick_summary_pages(text_pages: List[str]) -> List[int]:
     return out
 
 CURRENCY_RE = re.compile(r"\$?\s?([0-9][\d,]*\.\d{2})-?")
-AMOUNT = lambda s: _to_f(CURRENCY_RE.search(s).group(1)) if CURRENCY_RE.search(s) else None
+def AMOUNT(s):
+    match = CURRENCY_RE.search(s)
+    return _to_f(match.group(1)) if match else None
 
 def _sum_next_amount(text: str, anchor_pat: str, window: int = 200) -> float:
     total=0.0
@@ -100,8 +102,9 @@ Return strict JSON with numbers (no currency symbols), like:
  "total_withdrawals": 0.00 | null
 }
 Rules:
-- Prefer the "Account Summary" or table with "Other Deposits/Withdrawals" or "Deposits and credits"/"Withdrawals and debits".
-- If a value is clearly labeled as TOTAL, use it.
+- For total_deposits: Find the COMPLETE total of ALL deposits including "Other Deposits", regular deposits, electronic deposits, mobile checks, wires, etc. Sum everything credited to the account.
+- For total_withdrawals: Find the COMPLETE total of ALL withdrawals including "Other Withdrawals", electronic settlements, fees, transfers, etc. Sum everything debited from the account.
+- Prefer "Account Summary" sections that show comprehensive totals.
 - If only a minus sign indicates a debit, return the absolute number; sign is handled downstream.
 - If a field is not visible, return null.
 Return ONLY JSON.
@@ -152,9 +155,9 @@ def extract_any_bank_statement(pdf_path: str) -> Dict[str,Any]:
     totals = {
         "beginning_balance": _to_f(llm.get("beginning_balance")) if llm else None,
         "ending_balance": _to_f(llm.get("ending_balance")) if llm else None,
-        "deposit_count": int(llm.get("deposit_count")) if llm.get("deposit_count") not in (None,"") else None,
+        "deposit_count": int(llm.get("deposit_count")) if llm and llm.get("deposit_count") not in (None,"") else None,
         "total_deposits": _to_f(llm.get("total_deposits")) if llm else None,
-        "withdrawal_count": int(llm.get("withdrawal_count")) if llm.get("withdrawal_count") not in (None,"") else None,
+        "withdrawal_count": int(llm.get("withdrawal_count")) if llm and llm.get("withdrawal_count") not in (None,"") else None,
         "total_withdrawals": -abs(_to_f(llm.get("total_withdrawals"))) if llm and llm.get("total_withdrawals") not in (None,"") else None,
         "period": llm.get("period_label") if llm else None,
     }
@@ -170,9 +173,40 @@ def extract_any_bank_statement(pdf_path: str) -> Dict[str,Any]:
     min_bal = min(daily_nums) if daily_nums else None
     max_bal = max(daily_nums) if daily_nums else None
 
-    # 5) Build row
-    row = { **totals, **brk,
-            "min_daily_ending_balance": min_bal,
-            "max_daily_ending_balance": max_bal }
+    # 5) Ensure total_deposits includes ALL deposit types
+    llm_total_deposits = totals.get("total_deposits") or 0
+    breakout_total_deposits = sum([
+        brk.get("mobile_check_deposits", 0),
+        brk.get("deposits_from_RADOVANOVIC", 0), 
+        brk.get("wire_credits", 0)
+    ])
+    
+    # Use the larger of LLM-read total or breakout sum (LLM should be more comprehensive)
+    final_total_deposits = max(llm_total_deposits, breakout_total_deposits) if llm_total_deposits > 0 else breakout_total_deposits
+    
+    # 6) Similarly for withdrawals - ensure total includes all types
+    llm_total_withdrawals = abs(totals.get("total_withdrawals") or 0)
+    breakout_total_withdrawals = sum([
+        brk.get("withdrawals_PFSINGLE_PT", 0),
+        brk.get("withdrawals_Zelle", 0),
+        brk.get("withdrawals_AMEX", 0),
+        brk.get("withdrawals_CHASE_CC", 0),
+        brk.get("withdrawals_CADENCE_BANK", 0),
+        brk.get("withdrawals_SBA_EIDL", 0),
+        brk.get("withdrawals_Nav_Technologies", 0),
+        brk.get("bank_fees", 0)
+    ])
+    
+    final_total_withdrawals = -max(llm_total_withdrawals, breakout_total_withdrawals)
+    
+    # 7) Build row with corrected totals
+    row = { 
+        **totals, 
+        **brk,
+        "total_deposits": final_total_deposits,
+        "total_withdrawals": final_total_withdrawals,
+        "min_daily_ending_balance": min_bal,
+        "max_daily_ending_balance": max_bal 
+    }
 
     return row
