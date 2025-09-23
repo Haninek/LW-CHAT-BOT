@@ -126,6 +126,22 @@ def create_app() -> FastAPI:
     # Public deals endpoints for frontend (read-only, limited data)
     app.include_router(deals_read.router, prefix="/api/public/deals", tags=["deals.public"])
     app.include_router(deals_actions.router, prefix="/api/deals", tags=["deals.actions"])
+    
+    # Add a debug route to check configuration
+    @app.get("/debug")
+    async def debug_info():
+        import os
+        return {
+            "static_dir_exists": os.path.exists("static"),
+            "static_files": os.listdir("static") if os.path.exists("static") else [],
+            "web_dist_exists": os.path.exists("../web/dist"),
+            "debug_mode": settings.DEBUG,
+            "is_production": settings.is_production,
+            "railway_env": settings.RAILWAY_ENVIRONMENT_NAME,
+            "port": settings.PORT,
+            "current_dir": os.getcwd(),
+            "env_port": os.getenv("PORT", "not set")
+        }
 
     # Serve static files for production
     static_dir = None
@@ -134,8 +150,12 @@ def create_app() -> FastAPI:
     elif os.path.exists("../web/dist"):
         static_dir = "../web/dist"  # Local development
     
-    if static_dir and settings.is_production:
+    # Serve static files in production OR when RAILWAY_ENVIRONMENT_NAME is set
+    if static_dir and (settings.is_production or settings.RAILWAY_ENVIRONMENT_NAME):
+        logger.info(f"📁 Serving static files from: {static_dir}")
         app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
+    else:
+        logger.info(f"⚠️ Static files not served. Dir: {static_dir}, Production: {settings.is_production}, Railway: {settings.RAILWAY_ENVIRONMENT_NAME}")
 
     return app
 
