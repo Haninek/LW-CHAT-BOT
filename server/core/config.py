@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     PORT: int = 8000
 
+    # Railway provides DATABASE_URL for PostgreSQL, fallback to SQLite
     DATABASE_URL: str = "sqlite:///./uwizard.db"
     REDIS_URL: str = "memory://local"   # use real Redis in staging/prod
 
@@ -33,7 +34,15 @@ class Settings(BaseSettings):
     AUTH_OPTIONAL: bool = True            # allow all in dev (set False in staging/prod)
     AUTH_BEARER_TOKENS: str = "dev"       # CSV list of allowed Bearer tokens in dev
     PARTNER_KEYS: str = "demo"            # CSV list of allowed X-Partner-Key values
+    
+    # Railway/Production detection
+    RAILWAY_ENVIRONMENT_NAME: str = ""    # Railway sets this automatically
     # --- end add ---
+
+    @property
+    def is_production(self) -> bool:
+        """Detect if running in production (Railway or similar)"""
+        return bool(self.RAILWAY_ENVIRONMENT_NAME) or not self.DEBUG
 
     @property
     def cors_origins_list(self) -> List[str]:

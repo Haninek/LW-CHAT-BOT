@@ -128,8 +128,14 @@ def create_app() -> FastAPI:
     app.include_router(deals_actions.router, prefix="/api/deals", tags=["deals.actions"])
 
     # Serve static files for production
-    if not settings.DEBUG and os.path.exists("../web/dist"):
-        app.mount("/", StaticFiles(directory="../web/dist", html=True), name="static")
+    static_dir = None
+    if os.path.exists("static"):
+        static_dir = "static"  # Railway build puts frontend here
+    elif os.path.exists("../web/dist"):
+        static_dir = "../web/dist"  # Local development
+    
+    if static_dir and settings.is_production:
+        app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
 
     return app
 

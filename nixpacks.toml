@@ -1,0 +1,22 @@
+[variables]
+NIXPACKS_PYTHON_VERSION = "3.11"
+NODE_VERSION = "20"
+
+[phases.setup]
+nixPkgs = ["python311", "nodejs_20", "npm"]
+
+[phases.install]
+cmds = [
+    "cd server && pip install -r requirements.txt",
+    "cd web && npm install",
+    "cd web && npm run build"
+]
+
+[phases.build]
+cmds = [
+    "mkdir -p server/static",
+    "cp -r web/dist/* server/static/ || true"
+]
+
+[start]
+cmd = "cd server && python -m uvicorn main:app --host 0.0.0.0 --port $PORT"
