@@ -13,7 +13,7 @@ cmds = [
 
 [phases.build]
 cmds = [
-    "cd web && npm run build",
+    "cd web && npm run build -- --mode production",
     "mkdir -p server/static",
     "cp -r web/dist/* server/static/ || echo 'No dist files to copy'"
 ]
