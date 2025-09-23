@@ -1,13 +1,22 @@
-from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, Query, Response
-from sqlalchemy.orm import Session
-from core.database import get_db
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query
 from services.analysis_orchestrator import (
     parse_bank_pdfs_to_payload, build_monthly_rows, llm_risk_and_summary,
-    compute_cash_pnl, compute_offers, redact_many_to_zip
+    compute_cash_pnl, compute_offers
 )
 import tempfile, os
 
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
+
+@router.get("/llm-health")
+async def llm_health():
+    rows = [{
+        "file": "Synthetic_Aug_2025.pdf",
+        "total_deposits": 100000.0, "deposit_count": 10, "wire_credits": 0.0,
+        "total_withdrawals": -90000.0, "withdrawals_PFSINGLE_PT": 80000.0,
+        "ending_balance": 25000.0, "beginning_balance": 30000.0, "net_change": -5000.0
+    }]
+    pack = llm_risk_and_summary(rows)
+    return {"ok": True, "sample": pack}
 
 @router.post("/run")
 async def run_full_analysis(
@@ -15,12 +24,11 @@ async def run_full_analysis(
     deal_id: str = Form(...),
     files: list[UploadFile] = File(...),
     remit: str = Form("daily"),
-    db: Session = Depends(get_db),
 ):
     with tempfile.TemporaryDirectory() as tdir:
         paths=[]
         for f in files:
-            filename = f.filename or "uploaded_file.pdf"
+            filename = f.filename or "uploaded.pdf"
             p = os.path.join(tdir, filename)
             with open(p, "wb") as w: w.write(await f.read())
             paths.append(p)
@@ -37,11 +45,5 @@ async def run_full_analysis(
             "risk": risk,
             "cash_pnl": pnl,
             "offers": offers,
-            "downloads": {"scrubbed_zip_url": f"/api/analysis/scrubbed.zip?deal_id={deal_id}"}
+            "downloads": {"scrubbed_zip_url": None}  # wire storage later if needed
         }
-
-@router.get("/scrubbed.zip")
-async def download_scrubbed_zip(deal_id: str = Query(...), db: Session = Depends(get_db)):
-    # Wire your storage to fetch original PDFs for this deal, then:
-    # bytes_zip = redact_many_to_zip(pdf_paths)
-    raise HTTPException(status_code=501, detail="Wire storage for deal PDFs, then call redact_many_to_zip(paths).")

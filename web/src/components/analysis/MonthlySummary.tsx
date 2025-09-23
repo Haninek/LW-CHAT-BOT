@@ -3,10 +3,38 @@ import type { MonthlyRow } from '@/types/analysis'
 
 const usd = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n)
 
-type Props = { rows: MonthlyRow[] }
-export default function MonthlySummary({ rows }: Props) {
+function inferMonthYear(file: string): [string,string] | null {
+  // Full month name + year, e.g. "August 2025" or "August_2025"
+  const m = file.match(/(January|February|March|April|May|June|July|August|September|October|November|December)[\s_]+(\d{2,4})/i)
+  if (m) return [cap(m[1]), m[2].length === 2 ? `20${m[2]}` : m[2]]
+
+  // Abbrev month + optional separator + 2-digit year, e.g. "Aug-25", "Aug_25", "Aug 25"
+  const m2 = file.match(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)(?:[_\s-])?(\d{2})\b/i)
+  if (m2) return [expand(m2[1]), `20${m2[2]}`]
+
+  return null
+}
+function cap(s: string){ return s[0].toUpperCase()+s.slice(1).toLowerCase() }
+function expand(abbr: string) {
+  const map: Record<string,string> = {Jan:'January',Feb:'February',Mar:'March',Apr:'April',May:'May',Jun:'June',Jul:'July',Aug:'August',Sep:'September',Oct:'October',Nov:'November',Dec:'December'}
+  return map[abbr] || abbr
+}
+function monthLabelRange(file: string) {
+  const full = inferMonthYear(file)
+  if (!full) return file
+  const [monthName, year] = full
+  const short = monthName.slice(0,3)
+  const endDay = ['January','March','May','July','August','October','December'].includes(monthName) ? 31 :
+                 monthName === 'February' ? 28 : 30
+  return `${monthName} ${year} (${short} 1–${endDay}, ${year})`
+}
+function lineIf(v?: number, label?: string) {
+  const val = Math.abs(v || 0)
+  return val ? ` ${label} ${usd(val)},` : ''
+}
+
+export default function MonthlySummary({ rows }: { rows: MonthlyRow[] }) {
   if (!rows?.length) return null
-  // Sort newest first by filename inference (crude; uses label fallback)
   const sorted = [...rows].sort((a, b) => (a.file > b.file ? -1 : 1))
 
   return (
@@ -14,37 +42,22 @@ export default function MonthlySummary({ rows }: Props) {
       <h3 className="text-lg font-semibold text-slate-900 mb-3">High-level snapshot (by month)</h3>
       <div className="space-y-6">
         {sorted.map((r, idx) => {
-          const label = monthLabelRange(r.file, r.period ?? undefined) // e.g., "August 2025 (Aug 1–31, 2025)"
+          const label = monthLabelRange(r.file)
           const totalOut = Math.abs(r.total_withdrawals || 0)
           const mcaOut = Math.abs(r.withdrawals_PFSINGLE_PT || 0)
           const mcaPct = totalOut ? (mcaOut / totalOut) : 0
-
           const deposits = r.total_deposits || 0
           const depRAD = Math.abs(r.deposits_from_RADOVANOVIC || 0)
           const depMobile = Math.abs(r.mobile_check_deposits || 0)
           const depWire = Math.abs(r.wire_credits || 0)
-
           const minEnd = r.min_daily_ending_balance
           const maxEnd = r.max_daily_ending_balance
-
-          // RTR proxy ~ outflows to PFSINGLE PT / deposits, capped 0-1
           const rtrProxy = deposits ? (mcaOut / deposits) : 0
 
           const flags: string[] = []
           if (mcaPct >= 0.7) flags.push('Heavy MCA load')
           if (depWire > 0) flags.push('One-time wire inflow present')
-          if ((r.withdrawals_CADENCE_BANK || 0) > 0 || (r.withdrawals_SBA_EIDL || 0) > 0) {
-            flags.push('Other fixed obligations (bank loan, SBA EIDL)')
-          }
-
-          const nonMcaDebits = [
-            debitLabel('CADENCE BANK', r.withdrawals_CADENCE_BANK),
-            debitLabel('SBA EIDL', r.withdrawals_SBA_EIDL),
-            debitLabel('CHASE credit card', r.withdrawals_CHASE_CC),
-            debitLabel('AMEX', r.withdrawals_AMEX),
-            debitLabel('Nav Tech fees', r.withdrawals_Nav_Technologies),
-            debitLabel('Zelle', r.withdrawals_Zelle),
-          ].filter(Boolean) as string[]
+          if ((r.withdrawals_CADENCE_BANK || 0) > 0 || (r.withdrawals_SBA_EIDL || 0) > 0) flags.push('Other fixed obligations (bank/SBA)')
 
           return (
             <div key={idx} className="space-y-2">
@@ -59,7 +72,14 @@ export default function MonthlySummary({ rows }: Props) {
               <p className="text-slate-700">
                 <strong>Withdrawals:</strong> {usd(totalOut)} total. Of this, {usd(mcaOut)}
                 {totalOut ? <> ({Math.round(mcaPct*100)}%)</> : null}
-                {' '}are recurring “Electronic Settlement — SETTLMT PFSINGLE PT”. Non-MCA debits include {nonMcaDebits.length ? nonMcaDebits.join(', ') : 'other operating expenses'}.
+                {' '}are recurring “Electronic Settlement — SETTLMT PFSINGLE PT”. Non-MCA debits include
+                {lineIf(r.withdrawals_CADENCE_BANK, 'CADENCE BANK')}
+                {lineIf(r.withdrawals_SBA_EIDL, 'SBA EIDL')}
+                {lineIf(r.withdrawals_CHASE_CC, 'CHASE credit card')}
+                {lineIf(r.withdrawals_AMEX, 'AMEX')}
+                {lineIf(r.withdrawals_Nav_Technologies, 'Nav Tech fees')}
+                {lineIf(r.withdrawals_Zelle, 'Zelle')}
+                .
                 <div className="text-xs text-slate-500 truncate">{r.file}</div>
               </p>
 
@@ -80,52 +100,4 @@ export default function MonthlySummary({ rows }: Props) {
       </div>
     </div>
   )
-}
-
-function debitLabel(label: string, value?: number) {
-  const val = Math.abs(value || 0)
-  return val ? `${label} ${usd(val)}` : null
-}
-
-const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'] as const
-
-function monthLabelRange(file: string, period?: string | null) {
-  // Example outputs: "August 2025 (Aug 1–31, 2025)" or fallback to filename
-  const full = inferPeriod(period) ?? (period ? inferMonthYear(period) : null) ?? inferMonthYear(file)
-  if (!full) return period || file
-  const [monthName, year] = full
-  const monthIndex = MONTH_NAMES.findIndex((name) => name === monthName)
-  const endDay = monthIndex >= 0 ? new Date(Number(year), monthIndex + 1, 0).getDate() : 30
-  const short = monthName.slice(0,3)
-  return `${monthName} ${year} (${short} 1–${endDay}, ${year})`
-}
-function inferPeriod(period?: string | null): [string, string] | null {
-  if (!period) return null
-  const iso = period.match(/^(\d{4})[-_\/\s]?(\d{2})/)
-  if (iso) {
-    const year = iso[1]
-    const monthIndex = Number(iso[2]) - 1
-    const monthName = MONTH_NAMES[monthIndex]
-    return monthName ? [monthName, year] : null
-  }
-  const alt = period.match(/^(\d{2})[-_\/\s]?(\d{4})/)
-  if (alt) {
-    const monthIndex = Number(alt[1]) - 1
-    const year = alt[2]
-    const monthName = MONTH_NAMES[monthIndex]
-    return monthName ? [monthName, year] : null
-  }
-  return null
-}
-function inferMonthYear(file: string): [string,string] | null {
-  const m = file.match(/(January|February|March|April|May|June|July|August|September|October|November|December)[\s_]+(\d{2,4})/i)
-  if (m) return [cap(m[1]), m[2].length === 2 ? `20${m[2]}` : m[2]]
-  const m2 = file.match(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[_\- ]?(\d{2})/i)
-  if (m2) return [expand(m2[1]), `20${m2[2]}`]
-  return null
-}
-function cap(s: string){ return s[0].toUpperCase()+s.slice(1).toLowerCase() }
-function expand(abbr: string) {
-  const map: Record<string,string> = {Jan:'January',Feb:'February',Mar:'March',Apr:'April',May:'May',Jun:'June',Jul:'July',Aug:'August',Sep:'September',Oct:'October',Nov:'November',Dec:'December'}
-  return map[abbr] || abbr
 }

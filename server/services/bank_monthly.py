@@ -6,13 +6,10 @@ def _money(v) -> float:
     try:
         return float(v)
     except Exception:
-        try:
-            return float(Decimal(str(v)))
-        except Exception:
-            return 0.0
+        try: return float(Decimal(str(v)))
+        except Exception: return 0.0
 
-def _sum(items):
-    return float(sum(_money(x) for x in items))
+def _sum(items): return float(sum(_money(x) for x in items))
 
 PAT_PFSINGLE = re.compile(r'PFSINGLE|SETTLMT\s*PFSINGLE\s*PT|Electronic\s*Settlement', re.I)
 PAT_ZELLE    = re.compile(r'\bZELLE\b', re.I)
@@ -39,9 +36,9 @@ def build_monthly_rows(analyzed_payload: Dict[str, Any]) -> List[Dict[str, Any]]
         deposits    = [ _money(t.get("amount")) for t in txs if _money(t.get("amount")) > 0 ]
         withdrawals = [ abs(_money(t.get("amount"))) for t in txs if _money(t.get("amount")) < 0 ]
 
-        def wsum(pat):
+        def wsum(pat): 
             return _sum([ abs(_money(t.get("amount"))) for t in txs if _money(t.get("amount")) < 0 and pat.search(t.get("desc","")) ])
-        def dsum(pat):
+        def dsum(pat): 
             return _sum([ _money(t.get("amount")) for t in txs if _money(t.get("amount")) > 0 and pat.search(t.get("desc","")) ])
 
         row = {

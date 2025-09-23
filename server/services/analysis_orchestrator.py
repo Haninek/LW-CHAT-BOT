@@ -1,33 +1,38 @@
 from typing import Dict, Any, List, Tuple
-import os, re, io, json, math, zipfile, tempfile
+import os, re, io, json, math, tempfile, zipfile
 import pdfplumber
-try:
-    import fitz  # PyMuPDF
-except ImportError:
-    fitz = None
 from decimal import Decimal
 
+# PyMuPDF optional (for PDF redaction)
+try:
+    import fitz  # PyMuPDF
+except Exception:
+    fitz = None
+
+# OpenAI client (uses Replit-secret OPENAI_API_KEY)
 try:
     from openai import OpenAI
     _OPENAI = OpenAI(api_key=os.getenv("OPENAI_API_KEY")) if os.getenv("OPENAI_API_KEY") else None
 except Exception:
     _OPENAI = None
 
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+OPENAI_MAX_TOKENS = int(os.getenv("OPENAI_MAX_TOKENS", "500"))
+OPENAI_TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", "0.2"))
+
 from .bank_monthly import build_monthly_rows
 
 def _to_money(v) -> float:
-    try:
-        return float(Decimal(str(v)))
-    except Exception:
-        return 0.0
+    try: return float(Decimal(str(v)))
+    except Exception: return 0.0
 
 def parse_bank_pdfs_to_payload(pdf_paths: List[str]) -> Dict[str, Any]:
-    """Very lightweight parser; OK to start, refine later per bank."""
+    """Lightweight parser: extract month, balances, grep transaction-like lines."""
     statements = []
     for p in pdf_paths:
         try:
             with pdfplumber.open(p) as pdf:
-                text = "\n".join((page.extract_text() or "") for page in pdf.pages)
+                text = "\n".join(page.extract_text() or "" for page in pdf.pages)
         except Exception:
             text = ""
         month, year = _infer_month_year(text)
@@ -55,15 +60,15 @@ def _extract_transactions(text: str) -> List[Dict[str,Any]]:
         md = re.search(r'(\d{1,2}/\d{1,2}/\d{2,4}).*?([\-]?\$?\s?\d[\d,]*\.?\d{0,2}).*?(.+)$', line)
         if not md: 
             continue
-        raw_amt = md.group(2).replace("$","").replace(",","").replace(" ","")
+        amt_raw = md.group(2).replace("$","").replace(",","").replace(" ","")
         try:
-            amt = float(raw_amt)
+            amt = float(amt_raw)
             rows.append({"date": md.group(1), "amount": amt, "desc": md.group(3).strip()})
-        except:
-            continue
+        except: 
+            pass
     return rows
 
-def _extract_balances(text: str) -> Tuple[float,float,List[float]]:
+def _extract_balances(text: str):
     beg = 0.0; end = 0.0; daily=[]
     mb = re.search(r'Beginning\s+Balance[:\s]+\$?([\d,]+\.\d{2})', text, re.I)
     me = re.search(r'Ending\s+Balance[:\s]+\$?([\d,]+\.\d{2})', text, re.I)
@@ -74,23 +79,20 @@ def _extract_balances(text: str) -> Tuple[float,float,List[float]]:
     return beg, end, daily
 
 def llm_risk_and_summary(monthly_rows: List[Dict[str,Any]]) -> Dict[str,Any]:
-    """Returns JSON with risk_score, flags, pros/cons, followups, required docs, eligibility."""
+    """Strict JSON: risk_score, risk_flags, pros, cons, follow_up_questions, required_docs, eligibility, reason."""
     if not _OPENAI:
         return {
-            "risk_score": 70,
-            "risk_flags": ["no_openai_key"],
-            "pros": ["Parsed without LLM"],
-            "cons": ["No LLM deep pattern analysis"],
+            "risk_score": 70, "risk_flags": ["no_openai_key"],
+            "pros": ["Parsed without LLM"], "cons": ["No LLM deep analysis"],
             "follow_up_questions": [
                 "Confirm source of ACH deposits",
                 "Provide payoff letters for existing MCAs",
-                "Explain any low daily balances during settlement days",
-                "Clarify credit card usage (AMEX/CHASE) intent",
-                "Verify recurring CADENCE BANK and SBA EIDL amounts"
+                "Explain low-balance days during settlements",
+                "Clarify credit card payments (AMEX/CHASE) cadence",
+                "Verify CADENCE BANK and SBA EIDL as fixed obligations"
             ],
-            "required_docs": ["3 months bank statements", "Voided check", "Driver’s license", "EIN letter (if available)"],
-            "eligibility": "review",
-            "reason": "No LLM. Manual underwriter review suggested."
+            "required_docs": ["Last 3 months bank statements", "Voided check", "Photo ID"],
+            "eligibility": "review", "reason": "LLM unavailable"
         }
     sys = "You are an expert MCA underwriter. Be concise, data-grounded, and return strict JSON."
     user = {
@@ -99,8 +101,7 @@ def llm_risk_and_summary(monthly_rows: List[Dict[str,Any]]) -> Dict[str,Any]:
             "compute": [
                 "risk_score (0-100, 100 worst)",
                 "risk_flags (array of short slugs)",
-                "pros (short bullets)",
-                "cons (short bullets)",
+                "pros (short bullets)", "cons (short bullets)",
                 "follow_up_questions (5-10, specific to bank behavior)",
                 "required_docs (checklist)",
                 "eligibility (approve|decline|review) with reason"
@@ -108,17 +109,23 @@ def llm_risk_and_summary(monthly_rows: List[Dict[str,Any]]) -> Dict[str,Any]:
             "notes": "Treat 'withdrawals_PFSINGLE_PT' as MCA settlements; exclude 'wire_credits' from normalized revenue."
         }
     }
-    resp = _OPENAI.chat.completions.create(
-        model="gpt-4o-mini",
-        response_format={"type":"json_object"},
-        messages=[{"role":"system","content":sys},{"role":"user","content":json.dumps(user)}],
-        temperature=0.2
-    )
     try:
-        content = resp.choices[0].message.content
-        return json.loads(content or "{}")
+        resp = _OPENAI.chat.completions.create(
+            model=OPENAI_MODEL,
+            response_format={"type":"json_object"},
+            messages=[{"role":"system","content":sys},{"role":"user","content":json.dumps(user)}],
+            temperature=OPENAI_TEMPERATURE,
+            max_tokens=OPENAI_MAX_TOKENS,
+        )
+        return json.loads(resp.choices[0].message.content)
     except Exception:
-        return {"risk_score": 80, "risk_flags":["llm_parse_error"], "pros":[], "cons":["LLM parse failed"], "follow_up_questions":[], "required_docs":[], "eligibility":"review", "reason":"LLM failure"}
+        return {
+            "risk_score": 75, "risk_flags": ["llm_error"],
+            "pros": [], "cons": ["LLM call failed; manual review"],
+            "follow_up_questions": ["Provide payoff letters for MCA settlements","Explain any large wires"],
+            "required_docs": ["Recent 3 months bank statements","Voided check","Photo ID"],
+            "eligibility": "review", "reason": "LLM error"
+        }
 
 def compute_cash_pnl(monthly_rows: List[Dict[str,Any]]) -> Dict[str,Any]:
     months=[]
@@ -165,47 +172,27 @@ def compute_offers(monthly_rows: List[Dict[str,Any]], remit="daily") -> List[Dic
         term_days = 120 if remit == "daily" else 24
         est_daily = math.ceil(payback/term_days) if remit=="daily" else 0
         offers.append({
-            "id": f"tier-{i}",
-            "factor": f,
-            "advance": advance,
-            "payback": payback,
-            "holdback_cap": holdback,
-            "remit": remit,
-            "est_daily": est_daily,
+            "id": f"tier-{i}", "factor": f, "advance": advance, "payback": payback,
+            "holdback_cap": holdback, "remit": remit, "est_daily": est_daily,
             "notes": "Eligible inflow excludes wires; holdback capped by MCA load."
         })
     return offers
 
-def _redact_pdf_file(input_path: str, output_path: str) -> None:
-    if not fitz:
-        # PDF redaction not available without PyMuPDF, copy original
-        import shutil
-        shutil.copy2(input_path, output_path)
-        return
-        
-    doc = fitz.open(input_path)
-    patterns = [
-      r'\b\d{9,12}\b', r'\b\d{3}-\d{2}-\d{4}\b',
-      r'Routing\s*Number[:\s]*\d+', r'Account\s*Number[:\s]*\d+',
-      r'\b(?:[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})\b',
-      r'\b\d{3}[-.\s]?\d{2,3}[-.\s]?\d{4}\b',
-    ]
-    for page in doc:
-        txt = page.get_text("text")
-        for pat in patterns:
-            for m in re.finditer(pat, txt, re.I):
-                for rect in page.search_for(m.group(0)):
-                    page.add_redact_annot(rect, fill=(0,0,0))
-        page.apply_redactions()
-    doc.save(output_path, deflate=True, garbage=4)
-
 def redact_many_to_zip(pdf_paths: List[str]) -> bytes:
+    if not fitz:
+        return b""  # redaction not available; caller should skip
     with tempfile.TemporaryDirectory() as tdir:
         out_paths=[]
         for p in pdf_paths:
             out_p = os.path.join(tdir, f"SCRUBBED_{os.path.basename(p)}")
             try:
-                _redact_pdf_file(p, out_p)
+                doc = fitz.open(p)
+                for page in doc:
+                    # basic sample redaction; refine as needed
+                    for rect in page.search_for("Account"):
+                        page.add_redact_annot(rect, fill=(0,0,0))
+                page.apply_redactions()
+                doc.save(out_p, deflate=True, garbage=4)
                 out_paths.append(out_p)
             except Exception:
                 out_paths.append(p)
@@ -214,3 +201,4 @@ def redact_many_to_zip(pdf_paths: List[str]) -> bytes:
             for p in out_paths:
                 z.write(p, arcname=os.path.basename(p))
         return mem.getvalue()
+

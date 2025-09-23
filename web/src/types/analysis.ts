@@ -17,6 +17,3 @@ export type CashPnL = {
   months: { label: string; revenue_cash: number; operating_expenses_cash: number; debt_service_cash: number; net_cash: number; ending_balance: number }[];
   totals: { revenue_cash: number; operating_expenses_cash: number; debt_service_cash: number; net_cash: number };
 }
-
-// Backward compatibility
-export type MonthlyCsvRow = MonthlyRow
