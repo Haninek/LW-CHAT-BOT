@@ -11,7 +11,8 @@ export type MonthlyRow = {
 export type RiskPack = {
   risk_score: number; risk_flags: string[]; pros: string[]; cons: string[];
   follow_up_questions: string[]; required_docs: string[];
-  eligibility: 'approve'|'decline'|'review'; reason?: string;
+  eligibility: 'approve'|'decline'|'review' | { status: 'approve'|'decline'|'review'; reason?: string }; 
+  reason?: string;
 }
 export type CashPnL = {
   months: { label: string; revenue_cash: number; operating_expenses_cash: number; debt_service_cash: number; net_cash: number; ending_balance: number }[];
