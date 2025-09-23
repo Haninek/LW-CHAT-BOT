@@ -1,0 +1,22 @@
+[variables]
+PYTHON_VERSION = "3.11"
+
+[phases.setup]
+nixPkgs = ["python311", "python311Packages.pip", "python311Packages.virtualenv", "nodejs_20"]
+
+[phases.install]
+cmds = [
+    "python3 -m venv /opt/venv",
+    ". /opt/venv/bin/activate && pip install -r server/requirements.txt",
+    "cd web && npm install"
+]
+
+[phases.build]
+cmds = [
+    "cd web && npm run build",
+    "mkdir -p server/static",
+    "cp -r web/dist/* server/static/ || echo 'No dist files to copy'"
+]
+
+[start]
+cmd = ". /opt/venv/bin/activate && cd server && python -m uvicorn main:app --host 0.0.0.0 --port $PORT"
