@@ -21,30 +21,26 @@ OPENAI_MAX_TOKENS = int(os.getenv("OPENAI_MAX_TOKENS", "500"))
 OPENAI_TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", "0.2"))
 
 from .bank_monthly import build_monthly_rows
+from services.parsers.extract_any import extract_any_bank_statement
 
 def _to_money(v) -> float:
     try: return float(Decimal(str(v)))
     except Exception: return 0.0
 
 def parse_bank_pdfs_to_payload(pdf_paths: List[str]) -> Dict[str, Any]:
-    """Lightweight parser: extract month, balances, grep transaction-like lines."""
+    """Universal parser: render PDF pages, OCR via OpenAI Vision for totals, regex breakouts on full text."""
     statements = []
     for p in pdf_paths:
-        try:
-            with pdfplumber.open(p) as pdf:
-                text = "\n".join(page.extract_text() or "" for page in pdf.pages)
-        except Exception:
-            text = ""
-        month, year = _infer_month_year(text)
-        transactions = _extract_transactions(text)
-        beginning, ending, daily = _extract_balances(text)
+        fname = os.path.basename(p)
+        row = extract_any_bank_statement(p)
         statements.append({
-            "month": f"{year}-{month:02d}" if month and year else None,
-            "source_file": os.path.basename(p),
-            "beginning_balance": beginning,
-            "ending_balance": ending,
-            "transactions": transactions,
-            "daily_endings": daily,
+            "month": row.get("period"),
+            "source_file": fname,
+            "beginning_balance": row.get("beginning_balance"),
+            "ending_balance": row.get("ending_balance"),
+            "transactions": [],  # we compute breakouts separately
+            "daily_endings": [x for x in [row.get("min_daily_ending_balance"), row.get("max_daily_ending_balance")] if x is not None],
+            "extras": row
         })
     return {"statements": statements}
 

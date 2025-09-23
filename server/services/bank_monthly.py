@@ -32,6 +32,7 @@ def build_monthly_rows(analyzed_payload: Dict[str, Any]) -> List[Dict[str, Any]]
         daily = [ _money(x) for x in st.get("daily_endings", []) ]
         min_end = min(daily) if daily else None
         max_end = max(daily) if daily else None
+        extras: Dict[str,Any] = st.get("extras", {}) or {}
 
         deposits    = [ _money(t.get("amount")) for t in txs if _money(t.get("amount")) > 0 ]
         withdrawals = [ abs(_money(t.get("amount"))) for t in txs if _money(t.get("amount")) < 0 ]
@@ -41,31 +42,32 @@ def build_monthly_rows(analyzed_payload: Dict[str, Any]) -> List[Dict[str, Any]]
         def dsum(pat): 
             return _sum([ _money(t.get("amount")) for t in txs if _money(t.get("amount")) > 0 and pat.search(t.get("desc","")) ])
 
+        # Trust extractor values when available (from OpenAI Vision), fallback to computed
         row = {
             "file": st.get("source_file") or st.get("month") or "",
-            "period": st.get("period") or None,
-            "beginning_balance": beginning,
-            "ending_balance": ending,
-            "net_change": ending - beginning,
+            "period": st.get("period") or extras.get("period") or None,
+            "beginning_balance": extras.get("beginning_balance", beginning),
+            "ending_balance": extras.get("ending_balance", ending),
+            "net_change": (extras.get("ending_balance", ending) - extras.get("beginning_balance", beginning)),
 
-            "total_deposits": _sum(deposits),
-            "deposit_count": len(deposits),
-            "deposits_from_RADOVANOVIC": dsum(PAT_RADOV),
-            "mobile_check_deposits": dsum(PAT_MCHECK),
-            "wire_credits": dsum(PAT_WIRE_IN),
+            "total_deposits": extras.get("total_deposits", _sum(deposits)),
+            "deposit_count": extras.get("deposit_count", len(deposits)),
+            "deposits_from_RADOVANOVIC": extras.get("deposits_from_RADOVANOVIC", dsum(PAT_RADOV)),
+            "mobile_check_deposits": extras.get("mobile_check_deposits", dsum(PAT_MCHECK)),
+            "wire_credits": extras.get("wire_credits", dsum(PAT_WIRE_IN)),
 
-            "total_withdrawals": -_sum(withdrawals),  # keep negative (CSV style)
-            "withdrawal_count": len(withdrawals),
-            "withdrawals_PFSINGLE_PT": wsum(PAT_PFSINGLE),
-            "withdrawals_Zelle": wsum(PAT_ZELLE),
-            "withdrawals_AMEX": wsum(PAT_AMEX),
-            "withdrawals_CHASE_CC": wsum(PAT_CHASE),
-            "withdrawals_CADENCE_BANK": wsum(PAT_CADENCE),
-            "withdrawals_SBA_EIDL": wsum(PAT_SBA),
-            "withdrawals_Nav_Technologies": wsum(PAT_NAV),
+            "total_withdrawals": extras.get("total_withdrawals", -_sum(withdrawals)),  # keep negative (CSV style)
+            "withdrawal_count": extras.get("withdrawal_count", len(withdrawals)),
+            "withdrawals_PFSINGLE_PT": extras.get("withdrawals_PFSINGLE_PT", wsum(PAT_PFSINGLE)),
+            "withdrawals_Zelle": extras.get("withdrawals_Zelle", wsum(PAT_ZELLE)),
+            "withdrawals_AMEX": extras.get("withdrawals_AMEX", wsum(PAT_AMEX)),
+            "withdrawals_CHASE_CC": extras.get("withdrawals_CHASE_CC", wsum(PAT_CHASE)),
+            "withdrawals_CADENCE_BANK": extras.get("withdrawals_CADENCE_BANK", wsum(PAT_CADENCE)),
+            "withdrawals_SBA_EIDL": extras.get("withdrawals_SBA_EIDL", wsum(PAT_SBA)),
+            "withdrawals_Nav_Technologies": extras.get("withdrawals_Nav_Technologies", wsum(PAT_NAV)),
 
-            "min_daily_ending_balance": min_end,
-            "max_daily_ending_balance": max_end,
+            "min_daily_ending_balance": extras.get("min_daily_ending_balance", min_end),
+            "max_daily_ending_balance": extras.get("max_daily_ending_balance", max_end),
         }
         out.append(row)
     return out
