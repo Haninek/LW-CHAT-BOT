@@ -4,7 +4,6 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "cd web && npm install && npm run build && cd .. && mkdir -p server/static && cp -r web/dist/* server/static/ && cd server && python -m uvicorn main:app --host 0.0.0.0 --port $PORT",
     "healthcheckPath": "/api/healthz",
     "healthcheckTimeout": 100,
     "restartPolicyType": "ON_FAILURE",
