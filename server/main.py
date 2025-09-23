@@ -150,12 +150,24 @@ def create_app() -> FastAPI:
     elif os.path.exists("../web/dist"):
         static_dir = "../web/dist"  # Local development
     
-    # Serve static files in production OR when RAILWAY_ENVIRONMENT_NAME is set
-    if static_dir and (settings.is_production or settings.RAILWAY_ENVIRONMENT_NAME):
+    # Serve static files if directory exists (Railway deployment) or in production
+    if static_dir:
         logger.info(f"📁 Serving static files from: {static_dir}")
         app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
     else:
-        logger.info(f"⚠️ Static files not served. Dir: {static_dir}, Production: {settings.is_production}, Railway: {settings.RAILWAY_ENVIRONMENT_NAME}")
+        logger.info(f"⚠️ No static directory found - frontend will not be served")
+        
+        # Add a simple fallback route only when no static files exist
+        @app.get("/")
+        async def root_fallback():
+            return {
+                "app": "UW Wizard", 
+                "status": "API Running",
+                "message": "Frontend not available - static files not found",
+                "debug": "/debug",
+                "api_docs": "/docs",
+                "health": "/api/healthz"
+            }
 
     return app
 
