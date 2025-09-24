@@ -1,6 +1,6 @@
 from typing import Dict, Any, List, Tuple
 import os, re, io, json, math, tempfile, zipfile
-import pdfplumber
+import pdfplumber, fitz
 from decimal import Decimal
 
 # PyMuPDF optional (for PDF redaction)
@@ -22,24 +22,38 @@ OPENAI_TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", "0.2"))
 
 from .bank_monthly import build_monthly_rows
 from services.parsers.extract_any import extract_any_bank_statement
+from services.parsers.totals_any import extract_summary_from_pages
+from services.snapshot_metrics import compute_snapshot
 
 def _to_money(v) -> float:
     try: return float(Decimal(str(v)))
     except Exception: return 0.0
 
 def parse_bank_pdfs_to_payload(pdf_paths: List[str]) -> Dict[str, Any]:
-    """Universal parser: render PDF pages, OCR via OpenAI Vision for totals, regex breakouts on full text."""
+    """Universal parser:
+    1) Deterministic totals across common bank wordings (no AI).
+    2) Breakouts + (optional) LLM Vision fill for missing pieces.
+    """
     statements = []
     for p in pdf_paths:
         fname = os.path.basename(p)
-        row = extract_any_bank_statement(p)
+        # text pages for deterministic total capture
+        texts = []
+        with pdfplumber.open(p) as pdf:
+            for pg in pdf.pages: texts.append(pg.extract_text() or "")
+        det = extract_summary_from_pages(texts)  # no-AI totals
+        row = extract_any_bank_statement(p)      # adds breakouts + daily
+        # prefer deterministic totals when present
+        for k,v in det.items():
+            if v not in (None,""):
+                row[k] = v
         statements.append({
             "month": row.get("period"),
             "source_file": fname,
             "beginning_balance": row.get("beginning_balance"),
             "ending_balance": row.get("ending_balance"),
             "transactions": [],  # we compute breakouts separately
-            "daily_endings": [x for x in [row.get("min_daily_ending_balance"), row.get("max_daily_ending_balance")] if x is not None],
+            "daily_endings": row.get("daily_endings_full") or [],
             "extras": row
         })
     return {"statements": statements}
@@ -188,17 +202,23 @@ def redact_many_to_zip(pdf_paths: List[str]) -> bytes:
             try:
                 doc = fitz.open(p)
                 for page in doc:
-                    # basic sample redaction; refine as needed
-                    try:
-                        rects = page.search_for("Account")
-                        for rect in rects:
-                            page.add_redact_annot(rect, fill=(0,0,0))
-                        page.apply_redactions()
-                    except AttributeError:
-                        # Skip redaction if PyMuPDF version doesn't support these methods
-                        pass
+                    text = page.get_text("text")
+                    # Generic PII patterns: account/routing, SSN, emails, phone, full card numbers
+                    patterns = [
+                        r"Routing\s*Number[:\s]*\d{7,13}",
+                        r"Account\s*Number[:\s]*\d{6,14}",
+                        r"\b\d{3}-\d{2}-\d{4}\b",                         # SSN-like
+                        r"\b(?:[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})\b", # email
+                        r"\b\d{3}[-.\s]?\d{2,3}[-.\s]?\d{4}\b",           # phone
+                        r"\b(?:\d[ -]?){13,19}\b"                         # long number runs (cards/accts)
+                    ]
+                    # clean white fill (no black boxes)
+                    for pat in patterns:
+                        for m in re.finditer(pat, text, re.I):
+                            for rect in page.search_for(m.group(0)):
+                                page.add_redact_annot(rect, fill=(1,1,1))
+                page.apply_redactions()
                 doc.save(out_p, deflate=True, garbage=4)
-                doc.close()
                 out_paths.append(out_p)
             except Exception:
                 out_paths.append(p)
@@ -207,4 +227,67 @@ def redact_many_to_zip(pdf_paths: List[str]) -> bytes:
             for p in out_paths:
                 z.write(p, arcname=os.path.basename(p))
         return mem.getvalue()
+
+def build_clean_scrub_pdf(pdf_paths: List[str], snapshot: Dict[str,Any]) -> bytes:
+    """Create a single PDF: page 1 = neat snapshot table, followed by all scrubbed pages."""
+    if not fitz:
+        return b""
+    # First, scrub originals (white fill)
+    with tempfile.TemporaryDirectory() as tdir:
+        cleaned=[]
+        for p in pdf_paths:
+            out_p = os.path.join(tdir, f"SCRUB_{os.path.basename(p)}")
+            try:
+                doc = fitz.open(p)
+                for page in doc:
+                    text = page.get_text("text")
+                    pats = [
+                        r"Routing\s*Number[:\s]*\d{7,13}",
+                        r"Account\s*Number[:\s]*\d{6,14}",
+                        r"\b\d{3}-\d{2}-\d{4}\b",
+                        r"\b(?:[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})\b",
+                        r"\b\d{3}[-.\s]?\d{2,3}[-.\s]?\d{4}\b",
+                        r"\b(?:\d[ -]?){13,19}\b"
+                    ]
+                    for pat in pats:
+                        for m in re.finditer(pat, text, re.I):
+                            for rect in page.search_for(m.group(0)):
+                                page.add_redact_annot(rect, fill=(1,1,1))
+                    page.apply_redactions()
+                doc.save(out_p, deflate=True, garbage=4)
+                cleaned.append(out_p)
+            except Exception:
+                cleaned.append(p)
+        # Create a one-page summary
+        summary = fitz.open()
+        page = summary.new_page(width=612, height=792)  # Letter
+        title = "Scrub Snapshot"
+        labels = [
+            ("Avg Deposit Amount", f"${snapshot['avg_deposit_amount']:,}"),
+            ("Other Advances",     f"${snapshot['other_advances']:,}"),
+            ("Transfer Amount",    f"${snapshot['transfer_amount']:,}"),
+            ("Misc Deduction",     f"${snapshot['misc_deduction']:,}"),
+            ("Number of Deposits", f"{snapshot['number_of_deposits']:,}"),
+            ("Negative Days",      f"{snapshot['negative_days']:,}"),
+            ("Avg Daily Balance",  f"${snapshot['avg_daily_balance']:,}"),
+            ("Avg Beginning Balance", f"${snapshot['avg_beginning_balance']:,}"),
+            ("Avg Ending Balance", f"${snapshot['avg_ending_balance']:,}"),
+        ]
+        page.insert_textbox((36,36,576,90), title, fontsize=18, fontname="helv", align=0)
+        y=110
+        for i,(k,v) in enumerate(labels):
+            col = 36 if (i%2==0) else 320
+            if i%2==0 and i>0: y += 36
+            page.insert_textbox((col,y,col+250,y+16), k, fontsize=10, color=(0.3,0.35,0.4))
+            page.insert_textbox((col,y+14,col+250,y+34), v, fontsize=14, color=(0,0,0))
+        # Append cleaned originals
+        merged = fitz.open()
+        merged.insert_pdf(summary)
+        for p in cleaned:
+            d = fitz.open(p)
+            merged.insert_pdf(d)
+            d.close()
+        out_bytes = merged.tobytes(deflate=True)
+        summary.close()
+        return out_bytes
 

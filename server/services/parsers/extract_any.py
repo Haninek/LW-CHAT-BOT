@@ -188,9 +188,9 @@ def extract_any_bank_statement(pdf_path: str) -> Dict[str,Any]:
     totals = {
         "beginning_balance": _to_f(llm.get("beginning_balance")) if llm else None,
         "ending_balance": _to_f(llm.get("ending_balance")) if llm else None,
-        "deposit_count": int(llm.get("deposit_count")) if llm and llm.get("deposit_count") not in (None,"") else None,
+        "deposit_count": int(llm.get("deposit_count")) if llm and llm.get("deposit_count") not in (None,"") and str(llm.get("deposit_count")).isdigit() else None,
         "total_deposits": _to_f(llm.get("total_deposits")) if llm else None,
-        "withdrawal_count": int(llm.get("withdrawal_count")) if llm and llm.get("withdrawal_count") not in (None,"") else None,
+        "withdrawal_count": int(llm.get("withdrawal_count")) if llm and llm.get("withdrawal_count") not in (None,"") and str(llm.get("withdrawal_count")).isdigit() else None,
         "total_withdrawals": -abs(_to_f(llm.get("total_withdrawals"))) if llm and llm.get("total_withdrawals") not in (None,"") else None,
         "period": llm.get("period_label") if llm else None,
     }
