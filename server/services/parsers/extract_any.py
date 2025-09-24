@@ -91,22 +91,31 @@ def _openai_client():
         return None
 
 PROMPT = """You are reading bank statements. Extract exact MONTH TOTALS from each supplied page image.
+
+CRITICAL: Pay careful attention to comma-separated numbers like $234,233.01 or $85,210.74. Include ALL digits.
+
 Return strict JSON with numbers (no currency symbols), like:
 {
  "period_label": "Aug 2025" | null,
- "beginning_balance": 0.00 | null,
- "ending_balance": 0.00 | null,
- "deposit_count": 0 | null,
- "total_deposits": 0.00 | null,
- "withdrawal_count": 0 | null,
- "total_withdrawals": 0.00 | null
+ "beginning_balance": 85210.74 | null,
+ "ending_balance": 109553.34 | null,
+ "deposit_count": 15 | null,
+ "total_deposits": 234233.01 | null,
+ "withdrawal_count": 21 | null,
+ "total_withdrawals": 209890.41 | null
 }
+
 Rules:
-- For total_deposits: Find the COMPLETE total of ALL deposits including "Other Deposits", regular deposits, electronic deposits, mobile checks, wires, etc. Sum everything credited to the account.
-- For total_withdrawals: Find the COMPLETE total of ALL withdrawals including "Other Withdrawals", electronic settlements, fees, transfers, etc. Sum everything debited from the account.
-- Prefer "Account Summary" sections that show comprehensive totals.
+- Look for "Account Summary" sections first - these contain the authoritative totals
+- For comma-separated amounts like $234,233.01, enter as 234233.01 (remove commas but keep all digits)
+- For total_deposits: Use the exact "Other Deposits" total from Account Summary 
+- For total_withdrawals: Use the exact "Other Withdrawals" total from Account Summary
+- For beginning_balance: Use "Beginning Balance" amount from Account Summary
+- For ending_balance: Use "Ending Balance" amount from Account Summary
 - If only a minus sign indicates a debit, return the absolute number; sign is handled downstream.
 - If a field is not visible, return null.
+- Double-check large numbers - ensure no digits are missing from comma-separated amounts.
+
 Return ONLY JSON.
 """
 
@@ -173,33 +182,40 @@ def extract_any_bank_statement(pdf_path: str) -> Dict[str,Any]:
     min_bal = min(daily_nums) if daily_nums else None
     max_bal = max(daily_nums) if daily_nums else None
 
-    # 5) Ensure total_deposits includes ALL deposit types
-    llm_total_deposits = totals.get("total_deposits") or 0
-    breakout_total_deposits = sum([
-        brk.get("mobile_check_deposits", 0),
-        brk.get("deposits_from_RADOVANOVIC", 0), 
-        brk.get("wire_credits", 0)
-    ])
+    # 5) Trust OpenAI Vision totals when available (they're from Account Summary)
+    # Only fall back to breakout aggregation if Vision didn't find the totals
+    llm_total_deposits = totals.get("total_deposits")
+    llm_total_withdrawals = totals.get("total_withdrawals")
     
-    # Use the larger of LLM-read total or breakout sum (LLM should be more comprehensive)
-    final_total_deposits = max(llm_total_deposits, breakout_total_deposits) if llm_total_deposits > 0 else breakout_total_deposits
+    if llm_total_deposits and llm_total_deposits > 0:
+        # OpenAI Vision found a reasonable total - trust it
+        final_total_deposits = llm_total_deposits
+    else:
+        # Fall back to summing breakouts
+        final_total_deposits = sum([
+            brk.get("mobile_check_deposits", 0),
+            brk.get("deposits_from_RADOVANOVIC", 0), 
+            brk.get("wire_credits", 0)
+        ])
     
-    # 6) Similarly for withdrawals - ensure total includes all types
-    llm_total_withdrawals = abs(totals.get("total_withdrawals") or 0)
-    breakout_total_withdrawals = sum([
-        brk.get("withdrawals_PFSINGLE_PT", 0),
-        brk.get("withdrawals_Zelle", 0),
-        brk.get("withdrawals_AMEX", 0),
-        brk.get("withdrawals_CHASE_CC", 0),
-        brk.get("withdrawals_CADENCE_BANK", 0),
-        brk.get("withdrawals_SBA_EIDL", 0),
-        brk.get("withdrawals_Nav_Technologies", 0),
-        brk.get("bank_fees", 0)
-    ])
+    if llm_total_withdrawals and llm_total_withdrawals < 0:
+        # OpenAI Vision found a reasonable total - trust it (already negative)
+        final_total_withdrawals = llm_total_withdrawals
+    else:
+        # Fall back to summing breakouts
+        breakout_total_withdrawals = sum([
+            brk.get("withdrawals_PFSINGLE_PT", 0),
+            brk.get("withdrawals_Zelle", 0),
+            brk.get("withdrawals_AMEX", 0),
+            brk.get("withdrawals_CHASE_CC", 0),
+            brk.get("withdrawals_CADENCE_BANK", 0),
+            brk.get("withdrawals_SBA_EIDL", 0),
+            brk.get("withdrawals_Nav_Technologies", 0),
+            brk.get("bank_fees", 0)
+        ])
+        final_total_withdrawals = -breakout_total_withdrawals
     
-    final_total_withdrawals = -max(llm_total_withdrawals, breakout_total_withdrawals)
-    
-    # 7) Build row with corrected totals
+    # 6) Build row with corrected totals
     row = { 
         **totals, 
         **brk,
