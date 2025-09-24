@@ -5,6 +5,7 @@ import DynamicCsvTable from '@/components/analysis/DynamicCsvTable'
 import RiskProsCons from '@/components/analysis/RiskProsCons'
 import FollowUpsAndDocs from '@/components/analysis/FollowUpsAndDocs'
 import CashPnLCard from '@/components/analysis/CashPnLCard'
+import ScrubSnapshotCard from '@/components/analysis/ScrubSnapshotCard'
 
 export default function OffersLab() {
   const [files, setFiles] = useState<File[]>([])
@@ -13,6 +14,8 @@ export default function OffersLab() {
   const [risk, setRisk] = useState<RiskPack|null>(null)
   const [pnl, setPnL] = useState<CashPnL|null>(null)
   const [offers, setOffers] = useState<any[]>([])
+  const [snapshot, setSnapshot] = useState<any|null>(null)
+  const [cleanPdf, setCleanPdf] = useState<string| null>(null)
   const [error, setError] = useState<string| null>(null)
 
   const analyze = async () => {
@@ -30,6 +33,8 @@ export default function OffersLab() {
       setRisk(data.risk || null)
       setPnL(data.cash_pnl || null)
       setOffers(data.offers || [])
+      setSnapshot(data.snapshot || null)
+      setCleanPdf(data.downloads?.clean_scrub_pdf_path || null)
     } catch (e:any) {
       setError(e?.message || 'Analysis failed')
     } finally {
@@ -50,6 +55,7 @@ export default function OffersLab() {
           {error && <div className="text-red-600 text-sm mt-2">{error}</div>}
         </div>
         {rows.length > 0 && <MonthlySummary rows={rows} />}
+        {snapshot && <ScrubSnapshotCard snap={snapshot} cleanPdfPath={cleanPdf} />}
         {rows.length > 0 && <DynamicCsvTable rowsRaw={rows.map(r => Object.fromEntries(Object.entries(r).map(([k,v]) => [k, String(v ?? '')])))} />}
         <RiskProsCons risk={risk} />
         <FollowUpsAndDocs risk={risk} />
