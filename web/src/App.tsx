@@ -1,3 +1,4 @@
+import OffersLabClean from '@/pages/OffersLabClean'
 import { useEffect, useState } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom'
 import { Menu, X, BarChart3, MessageSquare, Building2, Send, Link as LinkIcon, DollarSign, Search, FileText, Settings as SettingsIcon, Bell, User, FolderOpen, Shield } from 'lucide-react'
@@ -224,7 +225,8 @@ function App() {
               <Route path="/sign" element={<Sign />} />
               <Route path="/admin/background" element={<AdminBackgroundReview />} />
               <Route path="/settings" element={<Settings />} />
-            </Routes>
+              <Route path="/offers-lab-clean" element={<OffersLabClean />} />
+</Routes>
           </div>
         </main>
       </div>

@@ -1,5 +1,4 @@
 import React from 'react'
-
 export type ScrubSnapshot = {
   avg_deposit_amount: number
   other_advances: number
@@ -12,10 +11,9 @@ export type ScrubSnapshot = {
   avg_ending_balance: number
 }
 const usd = (n:number)=> new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(n||0)
-
 export default function ScrubSnapshotCard({ snap, cleanPdfPath }: { snap: ScrubSnapshot|null, cleanPdfPath?: string|null }) {
   if (!snap) return null
-  const Item = ({label, value}:{label:string, value:string}) => (
+  const Item = ({label, value}:{label:string; value:string}) => (
     <div className="bg-white border rounded-lg p-3">
       <div className="text-slate-500 text-xs">{label}</div>
       <div className="text-slate-900 font-semibold">{value}</div>

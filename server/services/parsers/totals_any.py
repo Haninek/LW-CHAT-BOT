@@ -1,17 +1,14 @@
 import re
 from decimal import Decimal
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional
 
 def _f(x) -> float:
-    try:
-        return float(Decimal(str(x).replace(",", "").replace("$","").strip()))
-    except Exception:
-        return 0.0
+    try: return float(Decimal(str(x).replace(",", "").replace("$","").strip()))
+    except: return 0.0
 
 MONEY = r"\$?\s*([0-9][\d,]*\.\d{2})\s*-?"
 MONEY_RE = re.compile(MONEY)
 
-# Common summary synonyms across banks
 SUMMARIES = {
     "deposits": [
         r"\bOther\s+Deposits\b.*?" + MONEY,
@@ -53,19 +50,15 @@ def _first_amount(s: str) -> Optional[float]:
     return _f(m.group(1)) if m else None
 
 def extract_summary_from_pages(text_pages: List[str]) -> Dict[str, Any]:
-    """Try multiple wording variants across all pages to find real totals."""
     joined = "\n".join(text_pages)
     out: Dict[str, Any] = {}
-
-    def grab(key: str, post=False):
+    def grab(key: str):
         for pat in SUMMARIES[key]:
             m = re.search(pat, joined, re.I|re.S)
             if m:
-                # amount usually last group
                 amt = _first_amount(m.group(0))
                 if amt is not None:
-                    if key == "withdrawals":
-                        amt = -abs(amt)
+                    if key == "withdrawals": amt = -abs(amt)
                     out_key = {
                         "deposits": "total_deposits",
                         "withdrawals": "total_withdrawals",
@@ -74,10 +67,8 @@ def extract_summary_from_pages(text_pages: List[str]) -> Dict[str, Any]:
                         "deposit_count": "deposit_count",
                         "withdrawal_count": "withdrawal_count",
                     }[key]
-                    # prefer first hit
                     if out_key not in out:
                         out[out_key] = int(amt) if "count" in out_key else amt
-
     for k in ("deposits","withdrawals","beginning","ending","deposit_count","withdrawal_count"):
         grab(k)
     return out
