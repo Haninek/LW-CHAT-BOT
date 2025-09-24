@@ -69,6 +69,7 @@ def _breakouts_fulltext(text: str) -> Dict[str,float]:
     out["mobile_check_deposits"]   = _sum_inline(text, r"Mobile\s+Check\s+Deposit")
     out["deposits_from_RADOVANOVIC"] = _sum_next_amount(text, r"Electronic\s+Deposit(?:(?!\n).){0,200}?From\s+RADOVANOVIC")
     out["wire_credits"]            = _sum_next_amount(text, r"Wire\s+Credit|Incoming\s+Wire|Credit\s+Wire")
+    out["loan_proceeds_credits"]   = _sum_next_amount(text, r"Loan\s+Proceeds|Loan\s+Advance|Funding\s+Proceeds|Advance\s+Credit")
     # Withdrawals
     out["withdrawals_PFSINGLE_PT"] = _sum_next_amount(text, r"Electronic\s+Settlement(?:(?!\n).){0,200}?PFSINGLE|SETTLMT\s+PFSINGLE")
     out["withdrawals_Zelle"]       = _sum_next_amount(text, r"\bZelle\b")
@@ -78,7 +79,30 @@ def _breakouts_fulltext(text: str) -> Dict[str,float]:
     out["withdrawals_SBA_EIDL"]    = _sum_next_amount(text, r"SBA\s+EIDL|To\s+SBA")
     out["withdrawals_Nav_Technologies"] = _sum_next_amount(text, r"Nav\s+Technologies|Nav\s+Tech")
     out["bank_fees"]               = _sum_next_amount(text, r"Analysis\s+Service\s+Charge|Bank\s+Service\s+Charge|Monthly\s+Service\s+Fee")
+    # Transfers
+    out["transfer_in"]             = _sum_next_amount(text, r"Transfer\s+From|Online\s+Transfer\s+From|Account\s+Transfer\s+From")
+    out["transfer_out"]            = _sum_next_amount(text, r"Transfer\s+To|Online\s+Transfer\s+To|Account\s+Transfer\s+To")
     return out
+
+def extract_daily_endings(text: str) -> List[float]:
+    """
+    Try multiple headings used by banks for the daily ledger/ending balance ladder.
+    Return a list of all balances we can see in that block.
+    """
+    heads = [
+        r"Date\s+Ending\s+Balance",
+        r"Daily\s+Ending\s+Balance",
+        r"Daily\s+Ledger\s+Balance",
+        r"Daily\s+Balance",
+    ]
+    for h in heads:
+        m = re.search(h + r".*?(?:Only\s+balances.*?|This\s+statement.*?|Page\s+\d+|\Z)", text, re.I|re.S)
+        if m:
+            block = m.group(0)
+            vals = re.findall(r"([\d,]+\.\d{2})", block)
+            if vals:
+                return [_to_f(x) for x in vals]
+    return []
 
 # ---- OpenAI Vision extraction ----------------------------------------------
 def _openai_client():
@@ -175,10 +199,8 @@ def extract_any_bank_statement(pdf_path: str) -> Dict[str,Any]:
     full_text = "\n".join(text_pages)
     brk = _breakouts_fulltext(full_text)
 
-    # 4) Derive min/max ending balances if the statement includes a balance ladder
-    # (If not present, leave None; the UI handles nulls)
-    # Use the largest/smallest currency numbers near "Ending Balance" rows to approximate
-    daily_nums = [ _to_f(x) for x in re.findall(r"([0-9][\d,]*\.\d{2})", full_text) ]
+    # 4) Extract daily ending balances using improved function
+    daily_nums = extract_daily_endings(full_text)
     min_bal = min(daily_nums) if daily_nums else None
     max_bal = max(daily_nums) if daily_nums else None
 
@@ -222,7 +244,8 @@ def extract_any_bank_statement(pdf_path: str) -> Dict[str,Any]:
         "total_deposits": final_total_deposits,
         "total_withdrawals": final_total_withdrawals,
         "min_daily_ending_balance": min_bal,
-        "max_daily_ending_balance": max_bal 
+        "max_daily_ending_balance": max_bal,
+        "daily_endings_full": daily_nums
     }
 
     return row
