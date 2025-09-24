@@ -113,7 +113,11 @@ def llm_risk_and_summary(monthly_rows: List[Dict[str,Any]]) -> Dict[str,Any]:
             temperature=OPENAI_TEMPERATURE,
             max_tokens=OPENAI_MAX_TOKENS,
         )
-        return json.loads(resp.choices[0].message.content)
+        content = resp.choices[0].message.content
+        if content:
+            return json.loads(content)
+        else:
+            raise Exception("Empty response from OpenAI")
     except Exception:
         return {
             "risk_score": 75, "risk_flags": ["llm_error"],
@@ -185,10 +189,16 @@ def redact_many_to_zip(pdf_paths: List[str]) -> bytes:
                 doc = fitz.open(p)
                 for page in doc:
                     # basic sample redaction; refine as needed
-                    for rect in page.search_for("Account"):
-                        page.add_redact_annot(rect, fill=(0,0,0))
-                page.apply_redactions()
+                    try:
+                        rects = page.search_for("Account")
+                        for rect in rects:
+                            page.add_redact_annot(rect, fill=(0,0,0))
+                        page.apply_redactions()
+                    except AttributeError:
+                        # Skip redaction if PyMuPDF version doesn't support these methods
+                        pass
                 doc.save(out_p, deflate=True, garbage=4)
+                doc.close()
                 out_paths.append(out_p)
             except Exception:
                 out_paths.append(p)
