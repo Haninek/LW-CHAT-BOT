@@ -200,9 +200,9 @@ def redact_many_to_zip(pdf_paths: List[str]) -> bytes:
         for p in pdf_paths:
             out_p = os.path.join(tdir, f"SCRUBBED_{os.path.basename(p)}")
             try:
-                doc = fitz.open(p)
+                doc = fitz.open(p)  # type: ignore
                 for page in doc:
-                    text = page.get_text("text")
+                    text = page.get_text("text")  # type: ignore
                     # Generic PII patterns: account/routing, SSN, emails, phone, full card numbers
                     patterns = [
                         r"Routing\s*Number[:\s]*\d{7,13}",
@@ -215,10 +215,10 @@ def redact_many_to_zip(pdf_paths: List[str]) -> bytes:
                     # clean white fill (no black boxes)
                     for pat in patterns:
                         for m in re.finditer(pat, text, re.I):
-                            for rect in page.search_for(m.group(0)):
-                                page.add_redact_annot(rect, fill=(1,1,1))
-                page.apply_redactions()
-                doc.save(out_p, deflate=True, garbage=4)
+                            for rect in page.search_for(m.group(0)):  # type: ignore
+                                page.add_redact_annot(rect, fill=(1,1,1))  # type: ignore
+                    page.apply_redactions()  # type: ignore
+                doc.save(out_p, deflate=True, garbage=4)  # type: ignore
                 out_paths.append(out_p)
             except Exception:
                 out_paths.append(p)
@@ -238,9 +238,9 @@ def build_clean_scrub_pdf(pdf_paths: List[str], snapshot: Dict[str,Any]) -> byte
         for p in pdf_paths:
             out_p = os.path.join(tdir, f"SCRUB_{os.path.basename(p)}")
             try:
-                doc = fitz.open(p)
+                doc = fitz.open(p)  # type: ignore
                 for page in doc:
-                    text = page.get_text("text")
+                    text = page.get_text("text")  # type: ignore
                     pats = [
                         r"Routing\s*Number[:\s]*\d{7,13}",
                         r"Account\s*Number[:\s]*\d{6,14}",
@@ -251,16 +251,16 @@ def build_clean_scrub_pdf(pdf_paths: List[str], snapshot: Dict[str,Any]) -> byte
                     ]
                     for pat in pats:
                         for m in re.finditer(pat, text, re.I):
-                            for rect in page.search_for(m.group(0)):
-                                page.add_redact_annot(rect, fill=(1,1,1))
-                    page.apply_redactions()
-                doc.save(out_p, deflate=True, garbage=4)
+                            for rect in page.search_for(m.group(0)):  # type: ignore
+                                page.add_redact_annot(rect, fill=(1,1,1))  # type: ignore
+                    page.apply_redactions()  # type: ignore
+                doc.save(out_p, deflate=True, garbage=4)  # type: ignore
                 cleaned.append(out_p)
             except Exception:
                 cleaned.append(p)
         # Create a one-page summary
-        summary = fitz.open()
-        page = summary.new_page(width=612, height=792)  # Letter
+        summary = fitz.open()  # type: ignore
+        page = summary.new_page(width=612, height=792)  # type: ignore # Letter
         title = "Scrub Snapshot"
         labels = [
             ("Avg Deposit Amount", f"${snapshot['avg_deposit_amount']:,}"),
@@ -273,21 +273,21 @@ def build_clean_scrub_pdf(pdf_paths: List[str], snapshot: Dict[str,Any]) -> byte
             ("Avg Beginning Balance", f"${snapshot['avg_beginning_balance']:,}"),
             ("Avg Ending Balance", f"${snapshot['avg_ending_balance']:,}"),
         ]
-        page.insert_textbox((36,36,576,90), title, fontsize=18, fontname="helv", align=0)
+        page.insert_textbox((36,36,576,90), title, fontsize=18, fontname="helv", align=0)  # type: ignore
         y=110
         for i,(k,v) in enumerate(labels):
             col = 36 if (i%2==0) else 320
             if i%2==0 and i>0: y += 36
-            page.insert_textbox((col,y,col+250,y+16), k, fontsize=10, color=(0.3,0.35,0.4))
-            page.insert_textbox((col,y+14,col+250,y+34), v, fontsize=14, color=(0,0,0))
+            page.insert_textbox((col,y,col+250,y+16), k, fontsize=10, color=(0.3,0.35,0.4))  # type: ignore
+            page.insert_textbox((col,y+14,col+250,y+34), v, fontsize=14, color=(0,0,0))  # type: ignore
         # Append cleaned originals
-        merged = fitz.open()
-        merged.insert_pdf(summary)
+        merged = fitz.open()  # type: ignore
+        merged.insert_pdf(summary)  # type: ignore
         for p in cleaned:
-            d = fitz.open(p)
-            merged.insert_pdf(d)
-            d.close()
-        out_bytes = merged.tobytes(deflate=True)
-        summary.close()
+            d = fitz.open(p)  # type: ignore
+            merged.insert_pdf(d)  # type: ignore
+            d.close()  # type: ignore
+        out_bytes = merged.tobytes(deflate=True)  # type: ignore
+        summary.close()  # type: ignore
         return out_bytes
 
