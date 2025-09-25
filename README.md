@@ -148,24 +148,116 @@ CHERRY_API_KEY=...
 - **API**: Configurable limits with memory fallback
 - **Graceful**: Degradation when Redis unavailable
 
-## 📊 API Endpoints
+## 📊 Complete API Reference
 
-### Core Operations
+### 🏥 Health & Status
 ```bash
-# Upload bank statements
-POST /api/documents/bank/upload?merchant_id=123&deal_id=456
-Content-Type: multipart/form-data
+GET /api/healthz              # Service health check
+GET /api/readyz               # Service readiness check
+GET /debug                    # Debug configuration info
+```
 
-# Parse statements (new endpoint)
-POST /api/statements/parse?merchant_id=123&deal_id=456
+### 💼 Merchant Management
+```bash
+GET /api/merchants/           # Search merchants (query: ?search=name)
+POST /api/merchants/create    # Create or reuse merchant
+GET /api/merchants/resolve    # Resolve merchant by identifiers
+```
 
-# Generate offers (simplified)
-POST /api/offers/simple
-{"metrics": {"avg_monthly_revenue": 85000, ...}}
+### 🤝 Deal Management
+```bash
+# Core Deal Operations
+POST /api/deals/start         # Create/find deal with merchant matching
+GET /api/public/deals         # List deals (status, search filters)
+GET /api/public/deals/{id}    # Get comprehensive deal details
+GET /api/public/deals/merchant/{id}  # Get deals for merchant
 
-# Create deal
-POST /api/deals/start
-{"merchant_hint": {"phone": "+1234567890", "legal_name": "Business LLC"}}
+# Deal Actions
+POST /api/deals/{id}/accept   # Accept deal offer
+POST /api/deals/{id}/decline  # Decline deal
+POST /api/deals/{id}/status   # Update deal status
+```
+
+### 📄 Document Processing
+```bash
+# Bank Statement Upload & Analysis
+POST /api/documents/bank/upload     # Upload 3-12 PDFs with instant analysis
+POST /api/documents/bank/parse      # Parse PDFs without storing (immediate)
+
+# Statement Analysis
+POST /api/statements/parse          # Parse statements for deal
+GET /api/statements/monthly         # Get monthly metrics
+GET /api/statements/transactions    # Get parsed transactions
+GET /api/statements/monthly.csv     # Download monthly data as CSV
+```
+
+### 🎯 Offer Generation
+```bash
+# Offer Endpoints
+POST /api/offers/simple             # Generate offers from metrics directly
+POST /api/offers/                   # Generate offers for specific deal
+POST /api/offers/deals/{id}/accept  # Accept offer for deal
+POST /api/offers/deals/{id}/decline # Decline offer for deal
+```
+
+### 🔍 Background Checks
+```bash
+POST /api/background/check          # Initiate background verification
+GET /api/background/jobs/{job_id}   # Check background job status
+```
+
+### ✍️ E-Signature Integration
+```bash
+POST /api/sign/send                 # Send documents for signing
+POST /api/sign/webhook              # Handle signature completion webhooks
+```
+
+### 📱 SMS Campaign Management
+```bash
+POST /api/sms/cherry/send           # Send SMS campaigns (rate limited)
+POST /api/sms/cherry/webhook        # Handle inbound SMS and STOP commands
+```
+
+### 🔗 Integration Management
+```bash
+# Connector Configuration
+POST /api/connectors/               # Save connector config (encrypted)
+GET /api/connectors/{tenant_id}     # List tenant connectors
+GET /api/connectors/{tenant_id}/{name} # Get specific connector
+POST /api/connectors/validate       # Validate connector configuration
+```
+
+### 📊 Advanced Analysis
+```bash
+# Comprehensive Analysis Workflow
+POST /api/analysis/run              # Full PDF→analysis→offers→risk pipeline
+GET /api/analysis/llm-health        # Check AI analysis service health
+```
+
+### 🏪 Plaid Integration
+```bash
+POST /api/plaid/link-token          # Create Plaid Link token
+POST /api/plaid/exchange            # Exchange public token
+POST /api/plaid/metrics             # Fetch account metrics
+```
+
+### ⚙️ Admin & Queue Management
+```bash
+# Background Job Queue
+POST /api/queue/parse               # Queue parsing job
+POST /api/queue/background          # Queue background check
+POST /api/queue/sms                 # Queue SMS job
+POST /api/queue/offers              # Queue offer generation
+GET /api/queue/status/{job_id}      # Check job status
+
+# Admin Functions
+GET /api/admin/background/review    # Review background checks
+POST /api/admin/deals/{id}/force-action # Force deal action
+```
+
+### 📈 Event Timeline
+```bash
+GET /api/events                     # Get event timeline
 ```
 
 ## 🧪 Testing
