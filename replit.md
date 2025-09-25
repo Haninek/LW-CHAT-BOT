@@ -90,23 +90,79 @@ DROPBOXSIGN_WEBHOOK_SECRET=
 CHERRY_API_KEY=
 ```
 
-## API Endpoints
+## Complete API Reference
 
-### Core Operations
+### Health & Status
+- `GET /api/healthz` - Service health check
+- `GET /api/readyz` - Service readiness check
+- `GET /debug` - Debug configuration info
+
+### Merchant Management
+- `GET /api/merchants/` - Search merchants (query parameters)
+- `POST /api/merchants/create` - Create or reuse merchant
+- `GET /api/merchants/resolve` - Resolve merchant by identifiers
+
+### Deal Management
 - `POST /api/deals/start` - Create/find deal with merchant matching
-- `POST /api/intake/start` - Initialize intake session  
-- `POST /api/intake/answer` - Save intake responses with validation
-- `POST /api/documents/bank/upload` - Upload 3 PDF statements with validation
-- `POST /api/deals/{deal_id}/offers` - Generate underwriting offers
-- `POST /api/background/check` - Run comprehensive background verification
-- `POST /api/sign/send` - Send documents for e-signature
-- `POST /api/sms/cherry/send` - Send SMS campaigns with rate limiting
+- `GET /api/public/deals` - List deals (status, search filters)
+- `GET /api/public/deals/{id}` - Get comprehensive deal details
+- `GET /api/public/deals/merchant/{id}` - Get deals for merchant
+- `POST /api/deals/{id}/accept` - Accept deal offer
+- `POST /api/deals/{id}/decline` - Decline deal
+- `POST /api/deals/{id}/status` - Update deal status
 
-### Webhooks & Integration
-- `POST /api/sign/webhook` - Handle e-signature completion webhooks
+### Document Processing & Analysis
+- `POST /api/documents/bank/upload` - Upload 3-12 PDFs with instant analysis
+- `POST /api/documents/bank/parse` - Parse PDFs without storing
+- `POST /api/statements/parse` - Parse statements for deal
+- `GET /api/statements/monthly` - Get monthly metrics
+- `GET /api/statements/transactions` - Get parsed transactions
+- `GET /api/statements/monthly.csv` - Download monthly data as CSV
+
+### Advanced Analysis Pipeline
+- `POST /api/analysis/run` - Complete PDF→analysis→offers→risk pipeline
+- `GET /api/analysis/llm-health` - Check AI analysis service health
+
+### Offer Generation
+- `POST /api/offers/simple` - Generate offers from metrics directly
+- `POST /api/offers/` - Generate offers for specific deal
+- `POST /api/offers/deals/{id}/accept` - Accept offer for deal
+- `POST /api/offers/deals/{id}/decline` - Decline offer for deal
+
+### Background Checks
+- `POST /api/background/check` - Initiate background verification
+- `GET /api/background/jobs/{job_id}` - Check background job status
+
+### E-Signature Integration
+- `POST /api/sign/send` - Send documents for signing
+- `POST /api/sign/webhook` - Handle signature completion webhooks
+
+### SMS Campaign Management
+- `POST /api/sms/cherry/send` - Send SMS campaigns (rate limited)
 - `POST /api/sms/cherry/webhook` - Handle inbound SMS and STOP commands
-- `GET /api/background/jobs/{job_id}` - Check background verification status
-- `GET /api/healthz` - Health check endpoint
+
+### Integration Management
+- `POST /api/connectors/` - Save connector config (encrypted)
+- `GET /api/connectors/{tenant_id}` - List tenant connectors
+- `GET /api/connectors/{tenant_id}/{name}` - Get specific connector
+- `POST /api/connectors/validate` - Validate connector configuration
+
+### Plaid Integration
+- `POST /api/plaid/link-token` - Create Plaid Link token
+- `POST /api/plaid/exchange` - Exchange public token
+- `POST /api/plaid/metrics` - Fetch account metrics
+
+### Admin & Queue Management
+- `POST /api/queue/parse` - Queue parsing job
+- `POST /api/queue/background` - Queue background check
+- `POST /api/queue/sms` - Queue SMS job
+- `POST /api/queue/offers` - Queue offer generation
+- `GET /api/queue/status/{job_id}` - Check job status
+- `GET /api/admin/background/review` - Review background checks
+- `POST /api/admin/deals/{id}/force-action` - Force deal action
+
+### Event Timeline
+- `GET /api/events` - Get event timeline data
 
 ## Security Features
 
@@ -128,12 +184,13 @@ CHERRY_API_KEY=
 - Automatic event ID generation for tracking
 
 ## Recent Updates (September 2025)
-1. **Final Patch Applied**: Complete pilot readiness implementation
-2. **Security Hardening**: SMS rate limiting enforced, webhook signatures required
-3. **Idempotency Complete**: All critical routes protected with fallback mechanisms
-4. **Event Standardization**: All events use data_json with tenant/deal tracking
-5. **Storage Fallback**: Local file system with S3 upgrade path
-6. **Compliance Ready**: CA underwriting guardrails active
+1. **Complete API Documentation**: Updated README and created comprehensive API_INSTRUCTIONS.md
+2. **Enhanced Analysis Pipeline**: Added /api/analysis/run for complete PDF→offers workflow
+3. **Comprehensive Endpoint Coverage**: All 50+ API endpoints documented with examples
+4. **Idempotency Complete**: All critical routes protected with fallback mechanisms
+5. **Advanced Statement Analysis**: Enhanced parsing with monthly summaries and CSV export
+6. **California Compliance**: Full underwriting guardrails with 200-day term enforcement
+7. **Security Hardening**: SMS rate limiting, webhook signatures, encrypted connectors
 
 ## Development Workflow
 
