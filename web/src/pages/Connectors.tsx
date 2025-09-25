@@ -11,7 +11,12 @@ import {
   Trash2,
   TestTube,
   Shield,
-  Zap
+  Zap,
+  Code,
+  Globe,
+  Key,
+  Copy,
+  ExternalLink
 } from 'lucide-react'
 
 interface Connector {
@@ -214,11 +219,168 @@ export default function Connectors() {
               </div>
             </motion.div>
 
-            {/* Available Connector Types */}
+            {/* REST API Integration Section */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
+              className="mb-8"
+            >
+              <h2 className="text-xl font-semibold text-slate-900 mb-4 flex items-center">
+                <Code className="w-6 h-6 mr-2 text-indigo-600" />
+                REST API Integration
+              </h2>
+              
+              <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200/50">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Quick Start */}
+                  <div>
+                    <h3 className="text-lg font-semibold text-slate-900 mb-3 flex items-center">
+                      <Zap className="w-5 h-5 mr-2 text-emerald-600" />
+                      Widget Integration
+                    </h3>
+                    <p className="text-slate-600 mb-4">
+                      Connect this platform to your proprietary software via REST API for seamless cash advance processing.
+                    </p>
+                    
+                    <div className="bg-slate-50 rounded-lg p-4 mb-4">
+                      <h4 className="font-medium text-slate-900 mb-2">Quick Analysis Endpoint:</h4>
+                      <div className="bg-slate-800 rounded-md p-3 text-sm">
+                        <code className="text-green-400">POST</code> <code className="text-blue-400">/api/analysis/run</code>
+                        <br />
+                        <span className="text-slate-400">// Upload bank statements → get offers</span>
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-50 rounded-lg p-4">
+                      <h4 className="font-medium text-slate-900 mb-2">Simple Offers Endpoint:</h4>
+                      <div className="bg-slate-800 rounded-md p-3 text-sm">
+                        <code className="text-green-400">POST</code> <code className="text-blue-400">/api/offers/simple</code>
+                        <br />
+                        <span className="text-slate-400">// Generate offers from metrics</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Authentication & Examples */}
+                  <div>
+                    <h3 className="text-lg font-semibold text-slate-900 mb-3 flex items-center">
+                      <Key className="w-5 h-5 mr-2 text-blue-600" />
+                      Authentication
+                    </h3>
+                    
+                    <div className="bg-blue-50 rounded-lg p-4 mb-4">
+                      <h4 className="font-medium text-slate-900 mb-2">Authorization Header:</h4>
+                      <div className="bg-slate-800 rounded-md p-3 text-sm flex items-center justify-between">
+                        <code className="text-yellow-400">Authorization: Bearer dev</code>
+                        <button className="text-slate-400 hover:text-white transition-colors">
+                          <Copy className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <p className="text-xs text-slate-600 mt-2">Use "Bearer dev" for development testing</p>
+                    </div>
+
+                    <div className="bg-emerald-50 rounded-lg p-4">
+                      <h4 className="font-medium text-slate-900 mb-2">Example Widget Call:</h4>
+                      <div className="bg-slate-800 rounded-md p-3 text-xs overflow-x-auto">
+                        <pre className="text-slate-300">
+{`fetch('/api/offers/simple', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer dev',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    metrics: {
+      avg_monthly_revenue: 85000,
+      total_nsf_3m: 2
+    }
+  })
+})`}
+                        </pre>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* API Documentation Links */}
+                <div className="border-t border-slate-200 pt-6 mt-6">
+                  <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center">
+                    <Globe className="w-5 h-5 mr-2 text-purple-600" />
+                    Complete Documentation
+                  </h3>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <a
+                      href="/docs"
+                      target="_blank"
+                      className="bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white p-4 rounded-xl shadow-lg transition-all duration-200 flex items-center justify-between group"
+                    >
+                      <div>
+                        <h4 className="font-semibold">Interactive API</h4>
+                        <p className="text-xs opacity-90">Live testing interface</p>
+                      </div>
+                      <ExternalLink className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                    </a>
+
+                    <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 text-white p-4 rounded-xl shadow-lg cursor-pointer hover:from-emerald-600 hover:to-emerald-700 transition-all duration-200">
+                      <div>
+                        <h4 className="font-semibold">API_INSTRUCTIONS.md</h4>
+                        <p className="text-xs opacity-90">Widget integration guide</p>
+                      </div>
+                    </div>
+
+                    <div className="bg-gradient-to-r from-purple-500 to-purple-600 text-white p-4 rounded-xl shadow-lg cursor-pointer hover:from-purple-600 hover:to-purple-700 transition-all duration-200">
+                      <div>
+                        <h4 className="font-semibold">README.md</h4>
+                        <p className="text-xs opacity-90">All 50+ endpoints</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Key Endpoints Summary */}
+                <div className="border-t border-slate-200 pt-6 mt-6">
+                  <h3 className="text-lg font-semibold text-slate-900 mb-4">Key API Endpoints</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    <div className="space-y-2">
+                      <div className="flex items-center text-slate-700">
+                        <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-mono mr-3">POST</span>
+                        <span>/api/analysis/run</span>
+                      </div>
+                      <div className="flex items-center text-slate-700">
+                        <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-mono mr-3">POST</span>
+                        <span>/api/offers/simple</span>
+                      </div>
+                      <div className="flex items-center text-slate-700">
+                        <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-mono mr-3">POST</span>
+                        <span>/api/documents/bank/upload</span>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center text-slate-700">
+                        <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-mono mr-3">GET</span>
+                        <span>/api/healthz</span>
+                      </div>
+                      <div className="flex items-center text-slate-700">
+                        <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-mono mr-3">GET</span>
+                        <span>/api/statements/monthly</span>
+                      </div>
+                      <div className="flex items-center text-slate-700">
+                        <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-mono mr-3">GET</span>
+                        <span>/api/public/deals</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Available Connector Types */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
               className="mb-8"
             >
               <h2 className="text-xl font-semibold text-slate-900 mb-4">Available Connectors</h2>
