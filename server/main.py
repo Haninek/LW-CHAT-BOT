@@ -160,28 +160,6 @@ def create_app() -> FastAPI:
     
     logger.info(f"✅ {loaded_routes} API routes loaded successfully")
     
-    # Add SPA routing AFTER all API routes to avoid conflicts
-    if static_dir and os.path.exists(static_dir):
-        from fastapi.responses import FileResponse
-        
-        # Add specific SPA fallback handler with very low priority
-        @app.get("/{path:path}", include_in_schema=False)
-        async def spa_fallback(path: str):
-            """SPA fallback - serve index.html for client-side routes"""
-            # This route has the lowest priority and only handles non-API routes
-            
-            # Check if it's a static file first
-            file_path = os.path.join(static_dir, path)
-            if os.path.isfile(file_path):
-                return FileResponse(file_path)
-            
-            # For any non-existent path that's not an API route, serve index.html
-            index_path = os.path.join(static_dir, "index.html")
-            if os.path.isfile(index_path):
-                return FileResponse(index_path)
-                
-            raise HTTPException(status_code=404, detail="Not found")
-    
     # Add a debug route to check configuration
     @app.get("/debug")
     async def debug_info():
@@ -205,10 +183,45 @@ def create_app() -> FastAPI:
     elif os.path.exists("../web/dist"):
         static_dir = "../web/dist"  # Local development
     
-    # Note: Static files and SPA routing handled by catch-all route added after API routes
+    # Serve static files if directory exists (Railway deployment) or in production
     if static_dir:
-        logger.info(f"📁 Static files directory detected: {static_dir}")
-        logger.info("SPA routing will be handled by fallback route")
+        logger.info(f"📁 Serving static files from: {static_dir}")
+        
+        # First, mount static assets (CSS, JS, etc.)
+        app.mount("/assets", StaticFiles(directory=os.path.join(static_dir, "assets") if os.path.exists(os.path.join(static_dir, "assets")) else static_dir), name="assets")
+        
+        # Add SPA routing for specific known frontend routes only
+        from fastapi.responses import FileResponse
+        frontend_routes = [
+            "/", "/dashboard", "/settings", "/chat", "/campaigns", 
+            "/merchants", "/deals", "/connectors", "/offers", 
+            "/background", "/sign"
+        ]
+        
+        for route in frontend_routes:
+            # Create a closure to capture the route value
+            def make_spa_handler(route_path: str):
+                async def spa_handler():
+                    index_path = os.path.join(static_dir, "index.html")
+                    if os.path.isfile(index_path):
+                        return FileResponse(index_path)
+                    raise HTTPException(status_code=404, detail="Frontend not found")
+                return spa_handler
+            
+            app.get(route)(make_spa_handler(route))
+        
+        # Handle other static files with a catch-all for file extensions
+        @app.get("/{file_path:path}")
+        async def serve_static_files(file_path: str):
+            """Serve static files like favicon.ico, manifest.json, etc."""
+            # Only serve files with extensions or known static files
+            if "." in file_path or file_path in ["favicon.ico", "manifest.json", "robots.txt"]:
+                full_path = os.path.join(static_dir, file_path)
+                if os.path.isfile(full_path):
+                    return FileResponse(full_path)
+            
+            # For unknown routes without extensions, this is likely a 404
+            raise HTTPException(status_code=404, detail="Not found")
     else:
         logger.info(f"⚠️ No static directory found - frontend will not be served")
         
