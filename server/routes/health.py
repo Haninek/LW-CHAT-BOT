@@ -1,5 +1,6 @@
 """Health check endpoints."""
 
+import os
 from fastapi import APIRouter
 from datetime import datetime
 
@@ -13,7 +14,9 @@ async def health_check():
         "status": "OK",
         "service": "Underwriting Wizard API",
         "timestamp": datetime.utcnow().isoformat(),
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "port": os.getenv("PORT", "8000"),
+        "railway_env": os.getenv("RAILWAY_ENVIRONMENT_NAME", "local")
     }
 
 

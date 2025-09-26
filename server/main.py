@@ -51,21 +51,26 @@ async def lifespan(app: FastAPI):
     """Application lifespan events"""
     logger.info("🚀 Starting Underwriting Wizard backend...")
     
-    # Initialize database for development
-    init_dev_sqlite_if_needed(Base)
+    try:
+        # Initialize database for development
+        init_dev_sqlite_if_needed(Base)
+        
+        # Ensure tables are created when falling back to SQLite from Postgres
+        from core.database import create_engine_with_fallback
+        engine = create_engine_with_fallback()
+        if engine.dialect.name == 'sqlite':
+            logger.info("Creating SQLite tables after fallback...")
+            Base.metadata.create_all(bind=engine)
+        
+        # Create data directories
+        os.makedirs("data/contracts", exist_ok=True)
+        os.makedirs("data/uploads", exist_ok=True)
+        
+        logger.info("✅ Backend initialized successfully")
+    except Exception as e:
+        logger.warning(f"⚠️ Database initialization warning: {e}")
+        logger.info("Continuing startup without database...")
     
-    # Ensure tables are created when falling back to SQLite from Postgres
-    from core.database import create_engine_with_fallback
-    engine = create_engine_with_fallback()
-    if engine.dialect.name == 'sqlite':
-        logger.info("Creating SQLite tables after fallback...")
-        Base.metadata.create_all(bind=engine)
-    
-    # Create data directories
-    os.makedirs("data/contracts", exist_ok=True)
-    os.makedirs("data/uploads", exist_ok=True)
-    
-    logger.info("✅ Backend initialized successfully")
     yield
     
     logger.info("🛑 Shutting down backend...")
@@ -95,9 +100,10 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # More permissive hosts for Railway deployment
     app.add_middleware(
         TrustedHostMiddleware,
-        allowed_hosts=["*"] if settings.DEBUG else ["localhost", "127.0.0.1"]
+        allowed_hosts=["*"]  # Allow all hosts for Railway health checks
     )
 
     # Setup custom middleware
@@ -105,6 +111,12 @@ def create_app() -> FastAPI:
 
     # Include API routes
     app.include_router(health.router, prefix="/api", tags=["health"])
+    
+    # Add root health endpoint for Railway
+    @app.get("/health")
+    async def root_health():
+        """Root health check for Railway"""
+        return {"status": "OK", "service": "UW Wizard"}
     app.include_router(connectors.router, prefix="/api/connectors", tags=["connectors"])
     app.include_router(merchants.router, prefix="/api/merchants", tags=["merchants"])
     app.include_router(deals.router, prefix="/api", tags=["deals"])

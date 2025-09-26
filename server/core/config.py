@@ -1,11 +1,12 @@
+import os
 from functools import lru_cache
 from pydantic_settings import BaseSettings
 from typing import List
 
 class Settings(BaseSettings):
     APP_NAME: str = "UW Wizard"
-    DEBUG: bool = True
-    PORT: int = 8000
+    DEBUG: bool = os.getenv("RAILWAY_ENVIRONMENT_NAME", "") == ""  # False in production
+    PORT: int = int(os.getenv("PORT", "8000"))
 
     # Railway provides DATABASE_URL for PostgreSQL, fallback to SQLite
     DATABASE_URL: str = "sqlite:///./uwizard.db"
