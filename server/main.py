@@ -214,13 +214,21 @@ def create_app() -> FastAPI:
         @app.get("/{file_path:path}")
         async def serve_static_files(file_path: str):
             """Serve static files like favicon.ico, manifest.json, etc."""
+            # NEVER interfere with API routes
+            if file_path.startswith("api/"):
+                raise HTTPException(status_code=404, detail="Not found")
+            
             # Only serve files with extensions or known static files
             if "." in file_path or file_path in ["favicon.ico", "manifest.json", "robots.txt"]:
                 full_path = os.path.join(static_dir, file_path)
                 if os.path.isfile(full_path):
                     return FileResponse(full_path)
             
-            # For unknown routes without extensions, this is likely a 404
+            # For unknown routes without extensions that aren't API routes, serve SPA
+            index_path = os.path.join(static_dir, "index.html")
+            if os.path.isfile(index_path):
+                return FileResponse(index_path)
+            
             raise HTTPException(status_code=404, detail="Not found")
     else:
         logger.info(f"⚠️ No static directory found - frontend will not be served")
