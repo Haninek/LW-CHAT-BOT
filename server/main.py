@@ -160,6 +160,28 @@ def create_app() -> FastAPI:
     
     logger.info(f"✅ {loaded_routes} API routes loaded successfully")
     
+    # Add SPA routing AFTER all API routes to avoid conflicts
+    if static_dir and os.path.exists(static_dir):
+        from fastapi.responses import FileResponse
+        
+        # Add specific SPA fallback handler with very low priority
+        @app.get("/{path:path}", include_in_schema=False)
+        async def spa_fallback(path: str):
+            """SPA fallback - serve index.html for client-side routes"""
+            # This route has the lowest priority and only handles non-API routes
+            
+            # Check if it's a static file first
+            file_path = os.path.join(static_dir, path)
+            if os.path.isfile(file_path):
+                return FileResponse(file_path)
+            
+            # For any non-existent path that's not an API route, serve index.html
+            index_path = os.path.join(static_dir, "index.html")
+            if os.path.isfile(index_path):
+                return FileResponse(index_path)
+                
+            raise HTTPException(status_code=404, detail="Not found")
+    
     # Add a debug route to check configuration
     @app.get("/debug")
     async def debug_info():
@@ -183,11 +205,10 @@ def create_app() -> FastAPI:
     elif os.path.exists("../web/dist"):
         static_dir = "../web/dist"  # Local development
     
-    # Serve static files if directory exists (Railway deployment) or in production
+    # Note: Static files and SPA routing handled by catch-all route added after API routes
     if static_dir:
-        logger.info(f"📁 Serving static files from: {static_dir}")
-        # Use the standard StaticFiles mount with html=True for SPA support
-        app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
+        logger.info(f"📁 Static files directory detected: {static_dir}")
+        logger.info("SPA routing will be handled by fallback route")
     else:
         logger.info(f"⚠️ No static directory found - frontend will not be served")
         
