@@ -186,41 +186,8 @@ def create_app() -> FastAPI:
     # Serve static files if directory exists (Railway deployment) or in production
     if static_dir:
         logger.info(f"📁 Serving static files from: {static_dir}")
-        
-        # Custom SPA handler for client-side routing
-        from fastapi.responses import FileResponse
-        import os.path
-        
-        @app.get("/{full_path:path}")
-        async def spa_handler(full_path: str):
-            """Handle SPA routing - serve index.html for client-side routes"""
-            # Skip API routes
-            if full_path.startswith("api/") or full_path.startswith("health") or full_path.startswith("debug"):
-                raise HTTPException(status_code=404, detail="Not found")
-            
-            # Try to serve the actual file first
-            file_path = os.path.join(static_dir, full_path)
-            if os.path.isfile(file_path):
-                return FileResponse(file_path)
-            
-            # For directories or non-existent files, check for index.html
-            if full_path == "" or full_path.endswith("/"):
-                index_path = os.path.join(static_dir, full_path, "index.html")
-            else:
-                index_path = os.path.join(static_dir, "index.html")
-            
-            if os.path.isfile(index_path):
-                return FileResponse(index_path)
-            
-            # Fallback for SPA routes - always serve root index.html
-            root_index = os.path.join(static_dir, "index.html")
-            if os.path.isfile(root_index):
-                return FileResponse(root_index)
-            
-            raise HTTPException(status_code=404, detail="Frontend not found")
-            
-        # Also mount static files for assets
-        app.mount("/assets", StaticFiles(directory=os.path.join(static_dir, "assets") if os.path.exists(os.path.join(static_dir, "assets")) else static_dir), name="assets")
+        # Use the standard StaticFiles mount with html=True for SPA support
+        app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
     else:
         logger.info(f"⚠️ No static directory found - frontend will not be served")
         
