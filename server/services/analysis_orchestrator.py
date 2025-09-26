@@ -1,12 +1,14 @@
 from typing import Dict, Any, List, Tuple
 import os, re, io, json, math, tempfile, zipfile
-import pdfplumber, fitz
+import pdfplumber
 from decimal import Decimal
 
-# PyMuPDF optional (for PDF redaction)
+# PyMuPDF optional (for PDF redaction) - may fail on some systems
 try:
     import fitz  # PyMuPDF
-except Exception:
+    print("✅ PyMuPDF (fitz) loaded successfully")
+except Exception as e:
+    print(f"⚠️ PyMuPDF (fitz) not available: {e}")
     fitz = None
 
 # OpenAI client (uses Replit-secret OPENAI_API_KEY)
