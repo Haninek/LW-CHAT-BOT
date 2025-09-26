@@ -9,8 +9,8 @@ export default function Chat() {
   const dealId = currentMerchant?.currentDealId // Assuming this exists
 
   return (
-    <div className="h-screen flex flex-col">
-      <div className="flex-1">
+    <div className="h-screen flex flex-col overflow-hidden">
+      <div className="flex-1 overflow-hidden">
         <AiChat 
           merchantId={merchantId} 
           dealId={dealId}

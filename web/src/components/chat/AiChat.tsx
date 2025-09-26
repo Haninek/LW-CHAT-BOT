@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, Bot, User, Upload, FileText, X, Sparkles } from 'lucide-react'
+import { Send, Bot, User, Upload, FileText, X, Sparkles, Square } from 'lucide-react'
 import { useAppStore } from '../../state/useAppStore'
 
 interface ChatMessage {
@@ -22,6 +22,8 @@ export default function AiChat({ merchantId, dealId }: AiChatProps) {
   const [isTyping, setIsTyping] = useState(false)
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
   const [suggestions, setSuggestions] = useState<string[]>([])
+  const [isHoveringStop, setIsHoveringStop] = useState(false)
+  const [abortController, setAbortController] = useState<AbortController | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { apiConfig } = useAppStore()
@@ -66,8 +68,25 @@ export default function AiChat({ merchantId, dealId }: AiChatProps) {
     }
   }
 
+  const stopResponse = () => {
+    if (abortController) {
+      abortController.abort()
+      setAbortController(null)
+      setIsTyping(false)
+      
+      // Add a message indicating the response was stopped
+      const stoppedMessage: ChatMessage = {
+        role: 'assistant',
+        content: "Response stopped. How else can I help you?",
+        timestamp: new Date()
+      }
+      setMessages(prev => [...prev, stoppedMessage])
+    }
+  }
+
   const sendMessage = async (messageText: string) => {
     if (!messageText.trim() && uploadedFiles.length === 0) return
+    if (isTyping) return // Prevent sending while AI is responding
 
     const userMessage: ChatMessage = {
       role: 'user',
@@ -78,6 +97,10 @@ export default function AiChat({ merchantId, dealId }: AiChatProps) {
     setMessages(prev => [...prev, userMessage])
     setInputText('')
     setIsTyping(true)
+
+    // Create abort controller for this request
+    const controller = new AbortController()
+    setAbortController(controller)
 
     try {
       let response
@@ -95,10 +118,11 @@ export default function AiChat({ merchantId, dealId }: AiChatProps) {
           headers: {
             ...(apiConfig.apiKey && { 'Authorization': `Bearer ${apiConfig.apiKey}` })
           },
-          body: formData
+          body: formData,
+          signal: controller.signal
         })
         
-        setUploadedFiles([]) // Clear files after upload
+        setUploadedFiles([]) // Clear files after sending
       } else {
         // Regular chat message
         const conversationHistory = messages.map(msg => ({
@@ -117,7 +141,8 @@ export default function AiChat({ merchantId, dealId }: AiChatProps) {
             conversation_history: conversationHistory,
             merchant_id: merchantId,
             deal_id: dealId
-          })
+          }),
+          signal: controller.signal
         })
       }
 
@@ -135,15 +160,19 @@ export default function AiChat({ merchantId, dealId }: AiChatProps) {
         throw new Error('Failed to get response')
       }
     } catch (error) {
-      console.error('Chat error:', error)
-      const errorMessage: ChatMessage = {
-        role: 'assistant',
-        content: "I'm sorry, I'm having trouble responding right now. Please try again or contact support if the issue persists.",
-        timestamp: new Date()
+      // Don't show error if request was aborted
+      if (error.name !== 'AbortError') {
+        console.error('Chat error:', error)
+        const errorMessage: ChatMessage = {
+          role: 'assistant',
+          content: "I'm sorry, I'm having trouble responding right now. Please try again or contact support if the issue persists.",
+          timestamp: new Date()
+        }
+        setMessages(prev => [...prev, errorMessage])
       }
-      setMessages(prev => [...prev, errorMessage])
     } finally {
       setIsTyping(false)
+      setAbortController(null)
     }
   }
 
@@ -154,7 +183,10 @@ export default function AiChat({ merchantId, dealId }: AiChatProps) {
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      handleSendMessage()
+      // Only send if not currently typing (don't trigger stop)
+      if (!isTyping) {
+        handleSendMessage()
+      }
     }
   }
 
@@ -172,10 +204,10 @@ export default function AiChat({ merchantId, dealId }: AiChatProps) {
   }
 
   return (
-    <div className="h-full max-w-4xl mx-auto p-6">
-      <div className="bg-white rounded-3xl shadow-xl h-full flex flex-col overflow-hidden">
+    <div className="h-full max-w-4xl mx-auto p-6 flex flex-col">
+      <div className="bg-white rounded-3xl shadow-xl flex-1 flex flex-col overflow-hidden min-h-0">
         {/* Header */}
-        <div className="flex items-center gap-3 p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+        <div className="flex items-center gap-3 p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50 flex-shrink-0">
           <div className="p-2 bg-blue-100 rounded-full">
             <Bot className="w-5 h-5 text-blue-600" />
           </div>
@@ -187,7 +219,7 @@ export default function AiChat({ merchantId, dealId }: AiChatProps) {
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        <div className="flex-1 overflow-y-auto p-6 space-y-4 min-h-0">
           <AnimatePresence>
             {messages.map((message, index) => (
               <motion.div
@@ -275,9 +307,9 @@ export default function AiChat({ merchantId, dealId }: AiChatProps) {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Quick Suggestions */}
-      {suggestions.length > 0 && messages.length <= 1 && (
-        <div className="p-4 border-t border-gray-100">
+        {/* Quick Suggestions */}
+        {suggestions.length > 0 && messages.length <= 1 && (
+          <div className="p-4 border-t border-gray-100 flex-shrink-0">
           <p className="text-sm font-medium text-gray-700 mb-2">Quick questions:</p>
           <div className="flex flex-wrap gap-2">
             {suggestions.map((suggestion, index) => (
@@ -293,9 +325,9 @@ export default function AiChat({ merchantId, dealId }: AiChatProps) {
         </div>
       )}
 
-      {/* File Upload Area */}
-      {uploadedFiles.length > 0 && (
-        <div className="p-4 border-t border-gray-100 bg-gray-50">
+        {/* File Upload Area */}
+        {uploadedFiles.length > 0 && (
+          <div className="p-4 border-t border-gray-100 bg-gray-50 flex-shrink-0">
           <p className="text-sm font-medium text-gray-700 mb-2">Files to analyze:</p>
           <div className="space-y-2">
             {uploadedFiles.map((file, index) => (
@@ -315,7 +347,7 @@ export default function AiChat({ merchantId, dealId }: AiChatProps) {
       )}
 
         {/* Input */}
-        <div className="p-6 border-t border-gray-100">
+        <div className="p-6 border-t border-gray-100 flex-shrink-0">
           <div className="flex gap-3 items-end bg-gray-50 rounded-2xl p-3">
             <input
               type="file"
@@ -327,9 +359,14 @@ export default function AiChat({ merchantId, dealId }: AiChatProps) {
             />
             
             <button
-              onClick={() => fileInputRef.current?.click()}
-              className="p-3 text-gray-500 hover:text-blue-600 hover:bg-white rounded-xl transition-all duration-200"
-              title="Upload documents"
+              onClick={() => !isTyping && fileInputRef.current?.click()}
+              disabled={isTyping}
+              className={`p-3 rounded-xl transition-all duration-200 ${
+                isTyping 
+                  ? 'text-gray-300 cursor-not-allowed'
+                  : 'text-gray-500 hover:text-blue-600 hover:bg-white'
+              }`}
+              title={isTyping ? "Please wait for Chad to finish responding" : "Upload documents"}
             >
               <Upload className="w-5 h-5" />
             </button>
@@ -339,19 +376,37 @@ export default function AiChat({ merchantId, dealId }: AiChatProps) {
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="Ask about funding, upload documents, or get help with your application..."
-                className="w-full px-4 py-3 border-0 bg-transparent focus:outline-none resize-none placeholder-gray-500"
+                placeholder={isTyping ? "Chad is thinking..." : "Ask about funding, upload documents, or get help with your application..."}
+                className={`w-full px-4 py-3 border-0 bg-transparent focus:outline-none resize-none ${
+                  isTyping ? 'placeholder-gray-400' : 'placeholder-gray-500'
+                }`}
                 rows={1}
                 style={{ minHeight: '44px' }}
+                disabled={isTyping}
               />
             </div>
 
             <button
-              onClick={handleSendMessage}
-              disabled={!inputText.trim() && uploadedFiles.length === 0}
-              className="p-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
+              onClick={isTyping ? stopResponse : handleSendMessage}
+              onMouseEnter={() => isTyping && setIsHoveringStop(true)}
+              onMouseLeave={() => setIsHoveringStop(false)}
+              disabled={!isTyping && !inputText.trim() && uploadedFiles.length === 0}
+              className={`p-3 rounded-xl transition-all duration-200 shadow-sm ${
+                isTyping
+                  ? isHoveringStop 
+                    ? 'bg-red-500 hover:bg-red-600 text-white' 
+                    : 'bg-gray-400 text-white cursor-wait'
+                  : 'bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed'
+              }`}
+              title={isTyping ? (isHoveringStop ? 'Stop response' : 'AI is thinking...') : 'Send message'}
             >
-              <Send className="w-5 h-5" />
+              {isTyping ? (
+                isHoveringStop ? <Square className="w-5 h-5" /> : <div className="w-5 h-5 flex items-center justify-center">
+                  <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                </div>
+              ) : (
+                <Send className="w-5 h-5" />
+              )}
             </button>
           </div>
         </div>
