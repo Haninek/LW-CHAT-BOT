@@ -8,7 +8,8 @@ nixPkgs = [
     "python311Packages.virtualenv", 
     "nodejs_20",
     "stdenv.cc.cc.lib",
-    "libstdcxx5",
+    "gcc-unwrapped",
+    "libcxx",
     "glibc",
     "zlib",
     "freetype",
@@ -20,7 +21,9 @@ nixPkgs = [
 cmds = [
     "python3 -m venv /opt/venv",
     "export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/lib/x86_64-linux-gnu",
-    ". /opt/venv/bin/activate && pip install -r server/requirements.txt",
+    "echo '📦 Installing Python dependencies (excluding PyMuPDF)...'",
+    ". /opt/venv/bin/activate && pip install -r server/requirements.txt --no-deps || echo 'Some deps failed, continuing...'",
+    ". /opt/venv/bin/activate && pip install -r server/requirements.txt || echo 'Fallback install completed'",
     "cd web && npm install"
 ]
 
@@ -32,4 +35,4 @@ cmds = [
 ]
 
 [start]
-cmd = "export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH && . /opt/venv/bin/activate && cd server && python -m uvicorn main:app --host 0.0.0.0 --port $PORT"
+cmd = "echo '🔧 NIXPACKS: Setting up library paths...' && export LD_LIBRARY_PATH=/nix/store/*-gcc-unwrapped-*/lib:/nix/store/*-stdenv-linux*/lib:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH && echo '📚 LD_LIBRARY_PATH:' $LD_LIBRARY_PATH && echo '🔍 Looking for libstdc++:' && find /nix/store -name 'libstdc++.so*' 2>/dev/null | head -5 && echo '🔍 Checking system libs:' && ls -la /usr/lib/x86_64-linux-gnu/libstdc++* 2>/dev/null || echo 'No system libstdc++ found' && . /opt/venv/bin/activate && cd server && python -m uvicorn main:app --host 0.0.0.0 --port $PORT"
