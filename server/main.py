@@ -16,34 +16,30 @@ from core.config import get_settings
 from core.database import init_dev_sqlite_if_needed
 from models.base import Base
 from core.middleware import setup_middleware
-from routes import (
-    health,
-    connectors, 
-    merchants,
-    deals,
-    documents,
-    underwriting,
-    intake,
-    ingest,
-    bank,
-    plaid,
-    offers,
-    background,
-    sign,
-    events,
-    admin,
-    queue,
-    sms,
-    statements,
-    analysis
-)
-
-# Import deals extensions separately  
-from routes import deals_read, deals_actions
-
-# Configure logging
+# Configure logging first
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Import health endpoint first (critical for Railway)
+from routes import health
+
+# Try to import other routes, but continue if they fail
+optional_routes = []
+route_modules = [
+    'connectors', 'merchants', 'deals', 'documents', 'underwriting', 
+    'intake', 'ingest', 'bank', 'plaid', 'offers', 'background', 
+    'sign', 'events', 'admin', 'queue', 'sms', 'statements', 
+    'analysis', 'deals_read', 'deals_actions'
+]
+
+for module_name in route_modules:
+    try:
+        module = __import__(f'routes.{module_name}', fromlist=[module_name])
+        optional_routes.append((module_name, module))
+        logger.info(f"✅ Loaded route module: {module_name}")
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to load route module {module_name}: {e}")
+        logger.info(f"Continuing without {module_name} routes")
 
 
 @asynccontextmanager
@@ -52,15 +48,21 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting Underwriting Wizard backend...")
     
     try:
-        # Initialize database for development
-        init_dev_sqlite_if_needed(Base)
+        settings = get_settings()
         
-        # Ensure tables are created when falling back to SQLite from Postgres
-        from core.database import create_engine_with_fallback
-        engine = create_engine_with_fallback()
-        if engine.dialect.name == 'sqlite':
-            logger.info("Creating SQLite tables after fallback...")
-            Base.metadata.create_all(bind=engine)
+        # Only initialize database in development or if specifically needed
+        if settings.DEBUG or not settings.is_production:
+            # Initialize database for development
+            init_dev_sqlite_if_needed(Base)
+            
+            # Ensure tables are created when falling back to SQLite from Postgres
+            from core.database import get_engine
+            engine = get_engine()
+            if engine.dialect.name == 'sqlite':
+                logger.info("Creating SQLite tables after fallback...")
+                Base.metadata.create_all(bind=engine)
+        else:
+            logger.info("Production mode: skipping database table creation")
         
         # Create data directories
         os.makedirs("data/contracts", exist_ok=True)
@@ -82,13 +84,16 @@ def create_app() -> FastAPI:
     # Get settings first
     settings = get_settings()
     
+    # Create app with optional lifespan for Railway compatibility
+    lifespan_handler = lifespan if not os.getenv("RAILWAY_MINIMAL_START") else None
+    
     app = FastAPI(
         title="Underwriting Wizard API",
         description="Multi-tenant automated underwriting and CRM integration platform",
         version="1.0.0",
         docs_url="/docs" if settings.DEBUG else None,
         redoc_url="/redoc" if settings.DEBUG else None,
-        lifespan=lifespan
+        lifespan=lifespan_handler
     )
 
     # Add middleware
@@ -109,7 +114,7 @@ def create_app() -> FastAPI:
     # Setup custom middleware
     setup_middleware(app)
 
-    # Include API routes
+    # Include API routes - always include health first
     app.include_router(health.router, prefix="/api", tags=["health"])
     
     # Add root health endpoint for Railway
@@ -117,27 +122,43 @@ def create_app() -> FastAPI:
     async def root_health():
         """Root health check for Railway"""
         return {"status": "OK", "service": "UW Wizard"}
-    app.include_router(connectors.router, prefix="/api/connectors", tags=["connectors"])
-    app.include_router(merchants.router, prefix="/api/merchants", tags=["merchants"])
-    app.include_router(deals.router, prefix="/api", tags=["deals"])
-    app.include_router(documents.router, tags=["documents"])
-    app.include_router(underwriting.router, prefix="/api", tags=["underwriting"])
-    app.include_router(intake.router, prefix="/api/intake", tags=["intake"])
-    app.include_router(ingest.router, prefix="/api/ingest", tags=["ingest"])
-    app.include_router(bank.router, prefix="/api/bank", tags=["documents"])
-    app.include_router(plaid.router, prefix="/api/plaid", tags=["plaid"])
-    app.include_router(offers.router, prefix="/api/offers", tags=["offers"])
-    app.include_router(background.router, prefix="/api/background", tags=["background"])
-    app.include_router(sign.router, prefix="/api/sign", tags=["contracts"])
-    app.include_router(events.router, prefix="/api/events", tags=["events"])
-    app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
-    app.include_router(queue.router, prefix="/api/queue", tags=["queue"])
-    app.include_router(sms.router, prefix="/api")
-    app.include_router(statements.router)
-    app.include_router(analysis.router)
-    # Public deals endpoints for frontend (read-only, limited data)
-    app.include_router(deals_read.router, prefix="/api/public/deals", tags=["deals.public"])
-    app.include_router(deals_actions.router, prefix="/api/deals", tags=["deals.actions"])
+    
+    # Include other routes dynamically
+    route_configs = {
+        'connectors': {'prefix': '/api/connectors', 'tags': ['connectors']},
+        'merchants': {'prefix': '/api/merchants', 'tags': ['merchants']},
+        'deals': {'prefix': '/api', 'tags': ['deals']},
+        'documents': {'tags': ['documents']},
+        'underwriting': {'prefix': '/api', 'tags': ['underwriting']},
+        'intake': {'prefix': '/api/intake', 'tags': ['intake']},
+        'ingest': {'prefix': '/api/ingest', 'tags': ['ingest']},
+        'bank': {'prefix': '/api/bank', 'tags': ['documents']},
+        'plaid': {'prefix': '/api/plaid', 'tags': ['plaid']},
+        'offers': {'prefix': '/api/offers', 'tags': ['offers']},
+        'background': {'prefix': '/api/background', 'tags': ['background']},
+        'sign': {'prefix': '/api/sign', 'tags': ['contracts']},
+        'events': {'prefix': '/api/events', 'tags': ['events']},
+        'admin': {'prefix': '/api/admin', 'tags': ['admin']},
+        'queue': {'prefix': '/api/queue', 'tags': ['queue']},
+        'sms': {'prefix': '/api'},
+        'statements': {},
+        'analysis': {},
+        'deals_read': {'prefix': '/api/public/deals', 'tags': ['deals.public']},
+        'deals_actions': {'prefix': '/api/deals', 'tags': ['deals.actions']}
+    }
+    
+    loaded_routes = 0
+    for module_name, module in optional_routes:
+        try:
+            if hasattr(module, 'router'):
+                config = route_configs.get(module_name, {})
+                app.include_router(module.router, **config)
+                loaded_routes += 1
+                logger.info(f"✅ Included router: {module_name}")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to include router {module_name}: {e}")
+    
+    logger.info(f"✅ {loaded_routes} API routes loaded successfully")
     
     # Add a debug route to check configuration
     @app.get("/debug")
@@ -189,6 +210,13 @@ app = create_app()
 
 if __name__ == "__main__":
     settings = get_settings()
+    
+    # Log startup information
+    logger.info(f"🚀 Starting server on 0.0.0.0:{settings.PORT}")
+    logger.info(f"Debug mode: {settings.DEBUG}")
+    logger.info(f"Production mode: {settings.is_production}")
+    logger.info(f"Railway environment: {settings.RAILWAY_ENVIRONMENT_NAME}")
+    
     uvicorn.run(
         "main:app",
         host="0.0.0.0",

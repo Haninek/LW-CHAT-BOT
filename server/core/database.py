@@ -38,15 +38,31 @@ def _set_sqlite_pragma(dbapi_connection, connection_record):
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
 
-engine = create_engine_with_fallback()
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Delay engine creation to avoid startup issues
+_engine = None
+_SessionLocal = None
+
+def get_engine():
+    """Get or create database engine lazily."""
+    global _engine
+    if _engine is None:
+        _engine = create_engine_with_fallback()
+    return _engine
+
+def get_session_local():
+    """Get or create session local lazily."""
+    global _SessionLocal
+    if _SessionLocal is None:
+        _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=get_engine())
+    return _SessionLocal
 
 def init_dev_sqlite_if_needed(Base):
     settings = get_settings()
     if settings.DEBUG and settings.DATABASE_URL.startswith("sqlite"):
-        Base.metadata.create_all(bind=engine)
+        Base.metadata.create_all(bind=get_engine())
 
 def get_db():
+    SessionLocal = get_session_local()
     db = SessionLocal()
     try:
         yield db
