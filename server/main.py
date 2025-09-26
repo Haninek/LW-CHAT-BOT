@@ -29,7 +29,7 @@ route_modules = [
     'connectors', 'merchants', 'deals', 'documents', 'underwriting', 
     'intake', 'ingest', 'bank', 'plaid', 'offers', 'background', 
     'sign', 'events', 'admin', 'queue', 'sms', 'statements', 
-    'analysis', 'deals_read', 'deals_actions'
+    'analysis', 'chat', 'deals_read', 'deals_actions'
 ]
 
 for module_name in route_modules:
