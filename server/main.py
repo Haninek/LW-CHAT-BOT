@@ -38,7 +38,8 @@ for module_name in route_modules:
         optional_routes.append((module_name, module))
         logger.info(f"✅ Loaded route module: {module_name}")
     except Exception as e:
-        logger.warning(f"⚠️ Failed to load route module {module_name}: {e}")
+        logger.error(f"⚠️ Failed to load route module {module_name}: {e}")
+        logger.error(f"Import error details: {type(e).__name__}: {str(e)}")
         logger.info(f"Continuing without {module_name} routes")
 
 
@@ -142,7 +143,7 @@ def create_app() -> FastAPI:
         'queue': {'prefix': '/api/queue', 'tags': ['queue']},
         'sms': {'prefix': '/api'},
         'statements': {},
-        'analysis': {},
+        'analysis': {},  # Already has prefix="/api/analysis" in router definition
         'deals_read': {'prefix': '/api/public/deals', 'tags': ['deals.public']},
         'deals_actions': {'prefix': '/api/deals', 'tags': ['deals.actions']}
     }
@@ -173,7 +174,10 @@ def create_app() -> FastAPI:
             "railway_env": settings.RAILWAY_ENVIRONMENT_NAME,
             "port": settings.PORT,
             "current_dir": os.getcwd(),
-            "env_port": os.getenv("PORT", "not set")
+            "env_port": os.getenv("PORT", "not set"),
+            "loaded_routes": loaded_routes,
+            "loaded_route_modules": [name for name, _ in optional_routes],
+            "total_route_modules_attempted": len(route_modules)
         }
 
     # Serve static files for production with SPA routing support
