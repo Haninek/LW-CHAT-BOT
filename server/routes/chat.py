@@ -182,26 +182,113 @@ async def analyze_document(
         # Read file content
         content = await file.read()
         
-        # For now, we'll provide guidance based on file type
-        # In a full implementation, you'd extract text from PDFs or analyze images
-        
         if file.content_type == "application/pdf":
-            response_text = f"I can see you've uploaded a PDF document: '{file.filename}'. "
-            
-            if "statement" in file.filename.lower() or "bank" in file.filename.lower():
-                response_text += "This appears to be a bank statement. For a complete financial analysis, please upload this through our bank statement upload system where I can perform detailed cash flow analysis, identify deposits and withdrawals, and generate funding recommendations based on your financial patterns."
+            # Extract text from PDF
+            pdf_text = ""
+            try:
+                import io
+                import pdfplumber
                 
-                suggested_actions = ["Upload to Bank Analysis"]
-                next_steps = ["Use the document upload section for full bank statement analysis"]
+                with pdfplumber.open(io.BytesIO(content)) as pdf:
+                    # Extract text from first few pages (limit for token count)
+                    pages_to_read = min(3, len(pdf.pages))
+                    for i in range(pages_to_read):
+                        page_text = pdf.pages[i].extract_text()
+                        if page_text:
+                            pdf_text += page_text + "\\n\\n"
+                
+                # Limit text length for OpenAI (roughly 2000 characters)
+                if len(pdf_text) > 2000:
+                    pdf_text = pdf_text[:2000] + "... [truncated]"
+                    
+            except Exception as pdf_error:
+                print(f"PDF extraction error: {pdf_error}")
+                pdf_text = "[Unable to extract text from PDF]"
+            
+            # Analyze the document with OpenAI
+            if pdf_text and pdf_text.strip() and pdf_text != "[Unable to extract text from PDF]":
+                try:
+                    analysis_prompt = f"""Analyze this document and provide helpful insights for a business funding application. 
+
+Document filename: {file.filename}
+Document content (first few pages):
+{pdf_text}
+
+Please provide:
+1. What type of document this appears to be
+2. Key information extracted
+3. How this relates to business funding/lending
+4. What the user should do next with this document
+5. Any red flags or important items to note
+
+Be helpful and specific about funding applications."""
+
+                    response = _OPENAI.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {"role": "system", "content": "You are Chad, an AI funding assistant. Analyze documents to help with business lending applications."},
+                            {"role": "user", "content": analysis_prompt}
+                        ],
+                        temperature=0.7,
+                        max_tokens=600
+                    )
+                    
+                    ai_analysis = response.choices[0].message.content
+                    
+                    # Determine suggested actions based on document type
+                    suggested_actions = []
+                    next_steps = []
+                    requires_documents = False
+                    
+                    analysis_lower = ai_analysis.lower()
+                    filename_lower = file.filename.lower()
+                    
+                    if "bank" in analysis_lower or "statement" in analysis_lower or "bank" in filename_lower:
+                        suggested_actions = ["Upload for Full Bank Analysis", "View Financial Metrics"]
+                        next_steps = ["Use the dedicated bank statement upload for complete analysis"]
+                        requires_documents = True
+                    elif "contract" in analysis_lower or "agreement" in filename_lower:
+                        suggested_actions = ["Review Contract Terms", "Get Legal Guidance"]
+                        next_steps = ["Review the contract terms with your legal advisor"]
+                    elif "financial" in analysis_lower or "income" in analysis_lower:
+                        suggested_actions = ["Upload Financial Documents", "Complete Application"]
+                        next_steps = ["Add this to your funding application documents"]
+                        requires_documents = True
+                    else:
+                        suggested_actions = ["Get Document Guidance", "Continue Application"]
+                        next_steps = ["Let me know if you need help with other documents"]
+                    
+                    return ChatResponse(
+                        response=ai_analysis,
+                        suggested_actions=suggested_actions,
+                        requires_documents=requires_documents,
+                        next_steps=next_steps
+                    )
+                    
+                except Exception as openai_error:
+                    print(f"OpenAI analysis error: {openai_error}")
+                    # Fallback response
+                    pass
+            
+            # Fallback response if text extraction failed or OpenAI error
+            if "statement" in file.filename.lower() or "bank" in file.filename.lower():
+                response_text = f"I can see you've uploaded '{file.filename}' which appears to be a bank statement. While I couldn't fully analyze the content, I recommend uploading this through our dedicated bank statement analysis system for complete financial insights including cash flow analysis, transaction categorization, and funding recommendations."
+                suggested_actions = ["Upload to Bank Analysis", "Get Help"]
+                next_steps = ["Use the document upload section for detailed bank statement analysis"]
                 requires_documents = True
+            elif "contract" in file.filename.lower() or "agreement" in file.filename.lower():
+                response_text = f"I can see you've uploaded '{file.filename}' which appears to be a contract or agreement. This type of document is important for your funding application. Make sure to review all terms carefully and have it reviewed by legal counsel if needed."
+                suggested_actions = ["Review Terms", "Legal Review"]
+                next_steps = ["Review contract terms and conditions carefully"]
+                requires_documents = False
             else:
-                response_text += "I can help you understand what to do with this document. What specific information are you looking for, or what would you like me to help you with regarding this file?"
-                suggested_actions = ["Get Document Guidance"]
+                response_text = f"I can see you've uploaded '{file.filename}'. While I couldn't fully analyze the content, I can help guide you on what to do with this document for your funding application. What specific information are you looking for?"
+                suggested_actions = ["Get Document Guidance", "Upload Different Format"]
                 next_steps = ["Tell me what you'd like to know about this document"]
                 requires_documents = False
         else:
-            response_text = f"I can see you've uploaded '{file.filename}'. For the best analysis, our system works best with PDF bank statements. Would you like guidance on what documents we need for your funding application?"
-            suggested_actions = ["Document Requirements"]
+            response_text = f"I can see you've uploaded '{file.filename}'. For the best analysis, our system works best with PDF documents. Would you like guidance on what documents we need for your funding application?"
+            suggested_actions = ["Document Requirements", "Convert to PDF"]
             next_steps = ["Learn about required documents for funding"]
             requires_documents = True
         
@@ -213,6 +300,7 @@ async def analyze_document(
         )
         
     except Exception as e:
+        print(f"Document analysis error: {e}")
         return ChatResponse(
             response="I had trouble analyzing that document. For the most accurate analysis, please use our dedicated document upload system. I can guide you through the process if you'd like.",
             suggested_actions=["Upload Guidance", "Document Help"],
