@@ -1,6 +1,5 @@
 [variables]
 PYTHON_VERSION = "3.11"
-LD_LIBRARY_PATH = "/nix/store/*-gcc-unwrapped-*/lib:/nix/store/*-glibc-*/lib"
 
 [phases.setup]
 nixPkgs = [
@@ -8,17 +7,19 @@ nixPkgs = [
     "python311Packages.pip", 
     "python311Packages.virtualenv", 
     "nodejs_20",
-    "gcc-unwrapped",
     "stdenv.cc.cc.lib",
+    "libstdcxx5",
     "glibc",
     "zlib",
     "freetype",
-    "mupdf"
+    "mupdf",
+    "python311Packages.pymupdf"
 ]
 
 [phases.install]
 cmds = [
     "python3 -m venv /opt/venv",
+    "export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/lib/x86_64-linux-gnu",
     ". /opt/venv/bin/activate && pip install -r server/requirements.txt",
     "cd web && npm install"
 ]
@@ -31,4 +32,4 @@ cmds = [
 ]
 
 [start]
-cmd = ". /opt/venv/bin/activate && cd server && python -m uvicorn main:app --host 0.0.0.0 --port $PORT"
+cmd = "export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH && . /opt/venv/bin/activate && cd server && python -m uvicorn main:app --host 0.0.0.0 --port $PORT"
