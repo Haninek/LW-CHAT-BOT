@@ -1,6 +1,5 @@
 [variables]
 PYTHON_VERSION = "3.11"
-LD_LIBRARY_PATH = "/nix/store/*-gcc-unwrapped-*/lib:/nix/store/*-glibc-*/lib"
 
 [phases.setup]
 nixPkgs = [
@@ -8,15 +7,16 @@ nixPkgs = [
     "python311Packages.pip", 
     "python311Packages.virtualenv", 
     "nodejs_20",
-    "gcc-unwrapped",
-    "stdenv.cc.cc.lib",
-    "glibc",
+    "gcc",
+    "glibc", 
     "zlib",
     "freetype",
-    "mupdf"
+    "mupdf",
+    "python311Packages.pymupdf"
 ]
 
 [phases.install]
+nixLibs = ["gcc", "glibc"]
 cmds = [
     "python3 -m venv /opt/venv",
     ". /opt/venv/bin/activate && pip install -r server/requirements.txt",
