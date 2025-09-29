@@ -1,12 +1,13 @@
 """Connector management endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any
 from pydantic import BaseModel
 
 from core.database import get_db
 from core.security import encrypt_data, decrypt_data, mask_secrets, verify_partner_key
+from core.auth import require_bearer
 from models.connector import Connector
 from models.tenant import Tenant
 
@@ -23,6 +24,45 @@ class ConnectorValidation(BaseModel):
     tenant_id: str
     name: str
     live: bool = False
+
+
+@router.get("/")
+async def list_connectors_from_header(
+    request: Request,
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_bearer)
+):
+    """List all connectors for tenant from X-Tenant-ID header."""
+    
+    # Get tenant ID from header, fallback to 'default-tenant'
+    tenant_id = request.headers.get('X-Tenant-ID', 'default-tenant')
+    
+    # Validate tenant exists or create if it doesn't
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+    if not tenant:
+        # Create default tenant if it doesn't exist
+        tenant = Tenant(id=tenant_id, name=f"Tenant {tenant_id}")
+        db.add(tenant)
+        db.commit()
+    
+    connectors = db.query(Connector).filter(Connector.tenant_id == tenant_id).all()
+    return {
+        "success": True,
+        "data": [
+            {
+                "id": c.name,
+                "name": c.name, 
+                "type": c.name.lower().replace(' ', '_'),
+                "status": "active",
+                "config": mask_secrets(decrypt_data(str(c.encrypted_config))) if str(c.encrypted_config) else {},
+                "created_at": c.created_at.isoformat(),
+                "updated_at": c.updated_at.isoformat(),
+                "last_tested_at": c.updated_at.isoformat()
+            }
+            for c in connectors
+        ],
+        "timestamp": tenant.created_at.isoformat()
+    }
 
 
 @router.post("/")
@@ -48,7 +88,7 @@ async def save_connector(
     ).first()
     
     if existing:
-        existing.encrypted_config = encrypted_config
+        existing.encrypted_config = encrypted_config  # pyright: ignore
         db.commit()
         return {
             "status": "updated", 
@@ -116,7 +156,7 @@ async def get_connector(
     if not connector:
         raise HTTPException(status_code=404, detail="Connector not found")
     
-    config = decrypt_data(connector.encrypted_config)
+    config = decrypt_data(str(connector.encrypted_config))
     config = mask_secrets(config)  # Always mask secrets
     
     return {
