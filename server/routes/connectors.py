@@ -68,8 +68,9 @@ async def list_connectors_from_header(
 @router.post("/")
 async def save_connector(
     connector_config: ConnectorConfig,
+    request: Request,
     db: Session = Depends(get_db),
-    _: bool = Depends(verify_partner_key)
+    _: bool = Depends(require_bearer)
 ):
     """Save or update tenant-specific connector configuration (encrypted)."""
     

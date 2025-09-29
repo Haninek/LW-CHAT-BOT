@@ -178,7 +178,14 @@ function TopBar({ onMenuClick }: { onMenuClick: () => void }) {
             <Bell size={18} />
             <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-xs text-white flex items-center justify-center">2</span>
           </button>
-          <button className="p-2 rounded-lg hover:bg-slate-100">
+          <button 
+            className="p-2 rounded-lg hover:bg-slate-100"
+            onClick={() => {
+              // Simple user profile demo - could be expanded to full login system
+              alert('User Profile\n\n• Authentication: Bearer dev\n• Tenant: default-tenant\n• Status: Authenticated\n\n(Click OK to continue)')
+            }}
+            title="User Profile"
+          >
             <User size={18} />
           </button>
         </div>
