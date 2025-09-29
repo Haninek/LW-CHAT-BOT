@@ -18,6 +18,7 @@ import Campaigns from './pages/Campaigns'
 import DealsList from './pages/DealsList'
 import DealDetail from './pages/DealDetail'
 import AdminBackgroundReview from './pages/AdminBackgroundReview'
+import Login from './pages/Login'
 
 
 // Sidebar Component
@@ -147,6 +148,87 @@ function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
   )
 }
 
+// User Profile Button Component
+function UserProfileButton() {
+  const { auth, logout } = useAppStore(state => ({ 
+    auth: state.auth, 
+    logout: state.logout 
+  }))
+  const [showDropdown, setShowDropdown] = useState(false)
+
+  const handleLogout = () => {
+    logout()
+    setShowDropdown(false)
+  }
+
+  return (
+    <div className="relative">
+      <button 
+        className="p-2 rounded-lg hover:bg-slate-100 flex items-center space-x-2"
+        onClick={() => setShowDropdown(!showDropdown)}
+        title="User Profile"
+      >
+        <User size={18} />
+        {auth.user && (
+          <span className="hidden md:block text-sm font-medium text-slate-700">
+            {auth.user.name}
+          </span>
+        )}
+      </button>
+      
+      {showDropdown && (
+        <>
+          {/* Backdrop */}
+          <div 
+            className="fixed inset-0 z-10" 
+            onClick={() => setShowDropdown(false)} 
+          />
+          
+          {/* Dropdown */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: -10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="absolute right-0 top-full mt-2 w-64 bg-white rounded-lg shadow-xl border border-slate-200 py-2 z-20"
+          >
+            <div className="px-4 py-3 border-b border-slate-100">
+              <p className="text-sm font-medium text-slate-900">
+                {auth.user?.name || 'User'}
+              </p>
+              <p className="text-xs text-slate-500">
+                {auth.user?.email || 'No email'}
+              </p>
+              <p className="text-xs text-slate-400 mt-1">
+                Tenant: {auth.user?.tenant || 'default'}
+              </p>
+            </div>
+            
+            <div className="px-4 py-2">
+              <p className="text-xs text-slate-500 mb-2">Authentication</p>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-600">Status:</span>
+                <span className="text-xs text-emerald-600 font-medium">Authenticated</span>
+              </div>
+              <div className="flex items-center justify-between mt-1">
+                <span className="text-xs text-slate-600">Token:</span>
+                <span className="text-xs text-slate-400 font-mono">Bearer {auth.token}</span>
+              </div>
+            </div>
+            
+            <div className="border-t border-slate-100 pt-2">
+              <button
+                onClick={handleLogout}
+                className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 transition-colors"
+              >
+                Sign Out
+              </button>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </div>
+  )
+}
+
 // Top Bar Component
 function TopBar({ onMenuClick }: { onMenuClick: () => void }) {
   return (
@@ -178,24 +260,27 @@ function TopBar({ onMenuClick }: { onMenuClick: () => void }) {
             <Bell size={18} />
             <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-xs text-white flex items-center justify-center">2</span>
           </button>
-          <button 
-            className="p-2 rounded-lg hover:bg-slate-100"
-            onClick={() => {
-              // Simple user profile demo - could be expanded to full login system
-              alert('User Profile\n\n• Authentication: Bearer dev\n• Tenant: default-tenant\n• Status: Authenticated\n\n(Click OK to continue)')
-            }}
-            title="User Profile"
-          >
-            <User size={18} />
-          </button>
+          <UserProfileButton />
         </div>
       </div>
     </header>
   )
 }
 
+// Protected Route Component
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const isAuthenticated = useAppStore(state => state.auth.isAuthenticated)
+  
+  if (!isAuthenticated) {
+    return <Login />
+  }
+  
+  return <>{children}</>
+}
+
 function App() {
   const initialize = useAppStore(state => state.initialize)
+  const isAuthenticated = useAppStore(state => state.auth.isAuthenticated)
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   // Initialize app with seed data on startup
@@ -205,38 +290,45 @@ function App() {
 
   return (
     <Router>
-      <div className="min-h-screen bg-slate-50">
-        <Sidebar 
-          isOpen={sidebarOpen} 
-          onClose={() => setSidebarOpen(false)} 
-        />
-        
-        <TopBar onMenuClick={() => setSidebarOpen(true)} />
-        
-        {/* Main content */}
-        <main className="lg:ml-64 min-h-screen">
-          <div className="px-6 py-8">
-            <Routes>
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/rules" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/test" element={<Navigate to="/chat" replace />} />
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/chat" element={<Chat />} />
-              <Route path="/merchants" element={<Merchants />} />
-              <Route path="/deals" element={<DealsList />} />
-              <Route path="/deals/:dealId" element={<DealDetail />} />
-              <Route path="/campaigns" element={<Campaigns />} />
-              <Route path="/connectors" element={<Connectors />} />
-              <Route path="/offers" element={<OffersLab />} />
-              <Route path="/background" element={<Background />} />
-              <Route path="/sign" element={<Sign />} />
-              <Route path="/admin/background" element={<AdminBackgroundReview />} />
-              <Route path="/settings" element={<Settings />} />
-              <Route path="/offers-lab-clean" element={<OffersLabClean />} />
-</Routes>
-          </div>
-        </main>
-      </div>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="*" element={
+          <ProtectedRoute>
+            <div className="min-h-screen bg-slate-50">
+              <Sidebar 
+                isOpen={sidebarOpen} 
+                onClose={() => setSidebarOpen(false)} 
+              />
+              
+              <TopBar onMenuClick={() => setSidebarOpen(true)} />
+              
+              {/* Main content */}
+              <main className="lg:ml-64 min-h-screen">
+                <div className="px-6 py-8">
+                  <Routes>
+                    <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                    <Route path="/rules" element={<Navigate to="/dashboard" replace />} />
+                    <Route path="/test" element={<Navigate to="/chat" replace />} />
+                    <Route path="/dashboard" element={<Dashboard />} />
+                    <Route path="/chat" element={<Chat />} />
+                    <Route path="/merchants" element={<Merchants />} />
+                    <Route path="/deals" element={<DealsList />} />
+                    <Route path="/deals/:dealId" element={<DealDetail />} />
+                    <Route path="/campaigns" element={<Campaigns />} />
+                    <Route path="/connectors" element={<Connectors />} />
+                    <Route path="/offers" element={<OffersLab />} />
+                    <Route path="/background" element={<Background />} />
+                    <Route path="/sign" element={<Sign />} />
+                    <Route path="/admin/background" element={<AdminBackgroundReview />} />
+                    <Route path="/settings" element={<Settings />} />
+                    <Route path="/offers-lab-clean" element={<OffersLabClean />} />
+                  </Routes>
+                </div>
+              </main>
+            </div>
+          </ProtectedRoute>
+        } />
+      </Routes>
     </Router>
   )
 }
