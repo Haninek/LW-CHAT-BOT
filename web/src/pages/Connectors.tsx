@@ -16,7 +16,9 @@ import {
   Globe,
   Key,
   Copy,
-  ExternalLink
+  ExternalLink,
+  X,
+  Save
 } from 'lucide-react'
 
 interface Connector {
@@ -43,6 +45,9 @@ export default function Connectors() {
   const [loading, setLoading] = useState(true)
   const [editingConnector, setEditingConnector] = useState<Partial<Connector> | null>(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [selectedConnectorType, setSelectedConnectorType] = useState<string>('')
+  const [connectorConfig, setConnectorConfig] = useState<Record<string, string>>({})
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     loadConnectors()
@@ -110,6 +115,78 @@ export default function Connectors() {
 
   const getConnectorType = (type: string) => {
     return connectorTypes.find(t => t.id === type) || connectorTypes[0]
+  }
+
+  const handleCreateConnector = (type: string) => {
+    setSelectedConnectorType(type)
+    setConnectorConfig({})
+    setShowCreateModal(true)
+  }
+
+  const handleSaveConnector = async () => {
+    if (!selectedConnectorType || Object.keys(connectorConfig).length === 0) {
+      alert('Please fill in all required fields')
+      return
+    }
+
+    setSaving(true)
+    try {
+      const payload = {
+        tenant_id: 'default-tenant',
+        name: selectedConnectorType,
+        config: connectorConfig
+      }
+
+      const response = await apiClient.saveConnector(payload)
+      if (response.success) {
+        setShowCreateModal(false)
+        setSelectedConnectorType('')
+        setConnectorConfig({})
+        await loadConnectors() // Refresh the list
+      } else {
+        alert('Failed to save connector: ' + (response.error || 'Unknown error'))
+      }
+    } catch (error) {
+      console.error('Failed to save connector:', error)
+      alert('Failed to save connector: ' + (error as Error).message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const getConnectorFields = (type: string) => {
+    switch (type) {
+      case 'docusign':
+        return [
+          { key: 'client_id', label: 'Client ID', type: 'text', required: true },
+          { key: 'client_secret', label: 'Client Secret', type: 'password', required: true },
+          { key: 'environment', label: 'Environment', type: 'select', options: ['sandbox', 'production'], required: true }
+        ]
+      case 'dropbox_sign':
+        return [
+          { key: 'api_key', label: 'API Key', type: 'password', required: true },
+          { key: 'client_id', label: 'Client ID', type: 'text', required: true },
+          { key: 'environment', label: 'Environment', type: 'select', options: ['sandbox', 'production'], required: true }
+        ]
+      case 'clear':
+        return [
+          { key: 'api_key', label: 'API Key', type: 'password', required: true },
+          { key: 'environment', label: 'Environment', type: 'select', options: ['sandbox', 'production'], required: true }
+        ]
+      case 'plaid':
+        return [
+          { key: 'client_id', label: 'Client ID', type: 'text', required: true },
+          { key: 'secret', label: 'Secret Key', type: 'password', required: true },
+          { key: 'environment', label: 'Environment', type: 'select', options: ['sandbox', 'development', 'production'], required: true }
+        ]
+      case 'cherry_sms':
+        return [
+          { key: 'api_key', label: 'API Key', type: 'password', required: true },
+          { key: 'from_number', label: 'From Phone Number', type: 'text', required: true }
+        ]
+      default:
+        return []
+    }
   }
 
   return (
@@ -390,7 +467,7 @@ export default function Connectors() {
                     key={type.id}
                     whileHover={{ scale: 1.02 }}
                     className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/50 hover:shadow-md transition-all duration-200 cursor-pointer"
-                    onClick={() => setShowCreateModal(true)}
+                    onClick={() => handleCreateConnector(type.id)}
                   >
                     <div className={`w-12 h-12 bg-gradient-to-r ${type.color} rounded-xl flex items-center justify-center shadow-lg mb-3`}>
                       <span className="text-2xl">{type.icon}</span>
@@ -498,6 +575,109 @@ export default function Connectors() {
           </>
         )}
       </div>
+
+      {/* Connector Configuration Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-2xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto"
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-6 border-b border-slate-200">
+              <div className="flex items-center">
+                {selectedConnectorType && (
+                  <>
+                    <div className={`w-10 h-10 bg-gradient-to-r ${getConnectorType(selectedConnectorType).color} rounded-xl flex items-center justify-center shadow-sm mr-3`}>
+                      <span className="text-lg">{getConnectorType(selectedConnectorType).icon}</span>
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-slate-900">Configure {getConnectorType(selectedConnectorType).name}</h3>
+                      <p className="text-sm text-slate-600">{getConnectorType(selectedConnectorType).description}</p>
+                    </div>
+                  </>
+                )}
+              </div>
+              <button
+                onClick={() => {
+                  setShowCreateModal(false)
+                  setSelectedConnectorType('')
+                  setConnectorConfig({})
+                }}
+                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6">
+              {selectedConnectorType && (
+                <div className="space-y-4">
+                  {getConnectorFields(selectedConnectorType).map((field) => (
+                    <div key={field.key}>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                        {field.label}
+                        {field.required && <span className="text-red-500 ml-1">*</span>}
+                      </label>
+                      
+                      {field.type === 'select' ? (
+                        <select
+                          value={connectorConfig[field.key] || ''}
+                          onChange={(e) => setConnectorConfig(prev => ({ ...prev, [field.key]: e.target.value }))}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                          required={field.required}
+                        >
+                          <option value="">Select {field.label}</option>
+                          {field.options?.map(option => (
+                            <option key={option} value={option}>{option}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type={field.type}
+                          value={connectorConfig[field.key] || ''}
+                          onChange={(e) => setConnectorConfig(prev => ({ ...prev, [field.key]: e.target.value }))}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                          placeholder={`Enter ${field.label}`}
+                          required={field.required}
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end space-x-3 p-6 border-t border-slate-200">
+              <button
+                onClick={() => {
+                  setShowCreateModal(false)
+                  setSelectedConnectorType('')
+                  setConnectorConfig({})
+                }}
+                className="px-4 py-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveConnector}
+                disabled={saving || !selectedConnectorType}
+                className="bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg font-medium shadow-lg transition-all duration-200 flex items-center"
+              >
+                {saving ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                ) : (
+                  <Save className="w-4 h-4 mr-2" />
+                )}
+                {saving ? 'Saving...' : 'Save Connector'}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   )
 }

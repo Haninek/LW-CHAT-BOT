@@ -211,11 +211,11 @@ class ApiClient {
 
   // Connectors
   async getConnectors() {
-    return this.request('/api/connectors')
+    return this.request('/api/connectors/')
   }
 
   async saveConnector(config: any) {
-    return this.request('/api/connectors', {
+    return this.request('/api/connectors/', {
       method: 'POST',
       body: JSON.stringify(config),
     })
