@@ -63,6 +63,20 @@ export type IntakeStep = {
 }
 
 interface AppState {
+  // Authentication
+  auth: {
+    isAuthenticated: boolean
+    user: {
+      email: string
+      name: string
+      tenant: string
+    } | null
+    token: string | null
+  }
+  login: (email: string, password: string) => Promise<boolean>
+  logout: () => void
+  setAuth: (user: any, token: string) => void
+
   // API Configuration
   apiConfig: ApiConfig
   setApiConfig: (config: Partial<ApiConfig>) => void
@@ -115,6 +129,64 @@ interface AppState {
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
+      // Authentication
+      auth: {
+        isAuthenticated: false,
+        user: null,
+        token: null
+      },
+      login: async (email: string, password: string) => {
+        // Simple auth simulation - replace with real API call
+        if (email && password) {
+          const user = {
+            email,
+            name: email.split('@')[0],
+            tenant: 'default-tenant'
+          }
+          const token = 'dev' // Use dev token for development
+          
+          set({
+            auth: {
+              isAuthenticated: true,
+              user,
+              token
+            },
+            apiConfig: {
+              ...get().apiConfig,
+              apiKey: token
+            }
+          })
+          return true
+        }
+        return false
+      },
+      logout: () => {
+        set({
+          auth: {
+            isAuthenticated: false,
+            user: null,
+            token: null
+          },
+          apiConfig: {
+            ...get().apiConfig,
+            apiKey: ''
+          }
+        })
+      },
+      setAuth: (user: any, token: string) => {
+        set({
+          auth: {
+            isAuthenticated: true,
+            user,
+            token
+          },
+          apiConfig: {
+            ...get().apiConfig,
+            apiKey: token
+          }
+        })
+      },
+
       // API Configuration - Use relative URLs with Vite proxy
       apiConfig: {
         baseUrl: '',
@@ -230,8 +302,9 @@ export const useAppStore = create<AppState>()(
       }
     }),
     {
-      name: 'rules-intake-store-v3', // Force new storage with proxy
+      name: 'rules-intake-store-v4', // Updated with auth
       partialize: (state) => ({
+        auth: state.auth,
         apiConfig: state.apiConfig,
         sidebarOpen: state.sidebarOpen
       })
